@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Manager</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --danger: #dc2626;
+    --success: #059669;
+    --row-hover: #f9f5f7;
+  }
+    body.dark {
+    --bg: #111827;
+    --card: #1f2937;
+    --text: #f9fafb;
+    --muted: #9ca3af;
+    --border: #374151;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --success: #10b981;
+    --row-hover: #1e293b;
+  }
+    body.dark .modal-overlay {
+    background: rgba(0,0,0,0.7);
+    }
+    .theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.theme-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.theme-toggle .slider {
+  width: 46px;
+  height: 24px;
+  background: #cbd5e1;
+  border-radius: 999px;
+  position: relative;
+  flex: none;
+  transition: background 0.3s;
+}
+.theme-toggle .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s, background 0.3s;
+}
+.theme-toggle .icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 13px;
+  height: 13px;
+  transition: opacity 0.2s, transform 0.3s;
+}
+.theme-toggle .icon-sun {
+  color: #f59e0b;
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+.theme-toggle .icon-moon {
+  color: #e2e8f0;
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+.theme-toggle input:checked + .slider {
+  background: #334155;
+}
+.theme-toggle input:checked + .slider .knob {
+  transform: translateX(22px);
+  background: #0f172a;
+}
+.theme-toggle input:checked + .slider .icon-sun {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.5);
+}
+.theme-toggle input:checked + .slider .icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+.theme-toggle input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+body.dark th { background: #374151; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  select, input[type="text"] {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    min-width: 150px;
+  }
+  button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.danger { background: var(--danger); }
+  button.secondary { background: #6b7280; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background: #f9fafb; font-weight: 600; }
+  tr:hover { background: var(--row-hover); }
+
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h2 { margin: 0 0 12px; font-size: 18px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  .field textarea { min-height: 60px; resize: vertical; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .empty { text-align: center; padding: 40px; color: var(--muted); }
+  .last-sync { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .copy-status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 15px; }
+  .bad-email {
+    color: var(--muted);
+    font-style: italic;
+    border-bottom: 1px dotted var(--muted);
+    cursor: help;
+  }
+  .actions { display: flex; gap: 6px; }
+  .actions button { padding: 4px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Client Manager</h1>
+  <p class="subtitle">Local database • No cloud sync</p>
+
+  <div class="card">
+    <div class="toolbar">
+      <select id="filterStatus"><option value="">All Statuses</option></select>
+      <select id="filterDept"><option value="">All Departments</option></select>
+      <input type="text" id="filterSearch" placeholder="Search name...">
+      <button onclick="loadClients()">Apply</button>
+      <button onclick="copyEmails()">📋 Copy all emails</button>
+      <button onclick="openAddModal()">+ Add Client</button>
+      <button onclick="triggerImport()">Import</button>
+      <button onclick="triggerSync()" class="secondary">Sync</button>
+      <button onclick="saveToExcel()" class="secondary">Save to Excel</button>
+      <button onclick="exportExcel()" class="secondary">Export</button>
+      <button onclick="resetImport()" class="secondary">Reset</button>
+    </div>
+    <p class="subtitle">Local database • No cloud sync</p>
+    <label class="theme-toggle" title="Toggle dark mode">
+      <input type="checkbox" id="themeSwitch" aria-label="Toggle dark mode">
+      <span class="slider">
+        <span class="knob">
+          <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2"></circle>
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+          </svg>
+          <svg class="icon icon-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+          </svg>
+        </span>
+      </span>
+    </label>
+    <div class="copy-status" id="copyStatus"></div>
+    <div class="last-sync" id="lastSync">Last sync: never</div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Department</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Notes</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="clientTable">
+        <tr><td colspan="7" class="empty">No clients loaded. Import Excel or add manually.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="clientModal">
+  <div class="modal">
+    <h2 id="modalTitle">Add Client</h2>
+    <div class="field"><label>Name</label><input id="fName"></div>
+    <div class="field"><label>Status</label><input id="fStatus"></div>
+    <div class="field"><label>Department</label><input id="fDept"></div>
+    <div class="field"><label>Email</label><input id="fEmail"></div>
+    <div class="field"><label>Phone</label><input id="fPhone"></div>
+    <div class="field"><label>Notes</label><textarea id="fNotes"></textarea></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button onclick="saveClient()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <h2>Import Excel</h2>
+    <p style="font-size:13px;color:var(--muted)">Select sheet to import for Database.</p>
+    <div class="field">
+      <label>Select Excel file(s) — hold Cmd/Ctrl to pick multiple</label>
+      <input type="file" id="importFiles" accept=".xlsx,.xls" multiple>
+    </div>
+    <div id="importStatus" style="font-size:13px;margin:8px 0;"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeImportModal()">Cancel</button>
+      <button onclick="submitImport()">Import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingId = null;
+
+function $(id) { return document.getElementById(id); }
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt || res.statusText);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function loadFilters() {
+  try {
+    const data = await api('/api/filters');
+    const st = $('filterStatus');
+    st.innerHTML = '<option value="">All Statuses</option>';
+    data.statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; st.appendChild(o); });
+    const de = $('filterDept');
+    de.innerHTML = '<option value="">All Departments</option>';
+    data.departments.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; de.appendChild(o); });
+  } catch (e) { console.error(e); }
+}
+
+async function loadClients() {
+  const status = $('filterStatus').value;
+  const dept = $('filterDept').value;
+  const search = $('filterSearch').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (dept) params.set('department', dept);
+  if (search) params.set('search', search);
+  try {
+    const clients = await api('/api/clients?' + params.toString());
+    const tbody = $('clientTable');
+    if (!clients.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No clients match filters.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = clients.map(c => `
+      <tr>
+        <td>${esc(c.name)}</td>
+        <td><span class="status-badge">${esc(c.status || '—')}</span></td>
+        <td>${esc(c.department || '—')}</td>
+        <td>${emailCell(c.email)}</td>
+        <td>${esc(c.phone || '—')}</td>
+        <td>${esc(c.notes || '—')}</td>
+        <td class="actions">
+          <button onclick="editClient(${c.id}, '${esc(c.name)}', '${esc(c.status)}', '${esc(c.department)}', '${esc(c.email)}', '${esc(c.phone)}', '${esc(c.notes)}')">Edit</button>
+          <button onclick="deleteClient(${c.id})" class="danger">Del</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    alert('Failed to load clients: ' + e.message);
+  }
+}
+
+// Values that show up in the Email column of the Excel files but are not real addresses
+const EMAIL_PLACEHOLDERS = new Set([
+  'unknown', 'none', 'null', 'nil', 'n/a', 'na', 'n.a.', 'n.a', 'not available',
+  'not provided', 'no email', 'no e-mail', 'missing', 'tbd', 'pending', '-', '--', '—', '?'
+]);
+
+// True only for something we can actually mail: has a local part, an @, and a dotted domain
+function isRealEmail(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return false;
+  const key = raw.toLowerCase().replace(/\s+/g, ' ');
+  if (EMAIL_PLACEHOLDERS.has(key)) return false;
+  if (/^(unknown|none|null|n\/?a\b|no\s*e-?mail|not\s+(available|provided))/.test(key)) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw)) return false;
+  return true;
+}
+
+function showCopyStatus(text, isError = false) {
+  const msg = $('copyStatus');
+  if (!msg) return;
+  msg.textContent = text;
+  msg.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+  clearTimeout(showCopyStatus.timer);
+  showCopyStatus.timer = setTimeout(() => { msg.textContent = ''; }, 5000);
+}
+
+async function copyEmails() {
+  const status = $('filterStatus').value;
+  const dept = $('filterDept').value;
+  const search = $('filterSearch').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (dept) params.set('department', dept);
+  if (search) params.set('search', search);
+  try {
+    const clients = await api('/api/clients?' + params.toString());
+    const seen = new Set();
+    const emails = [];
+    let invalid = 0;
+    clients.forEach(c => {
+      if (!isRealEmail(c.email)) { invalid++; return; }
+      const email = c.email.trim();
+      const key = email.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      emails.push(email);
+    });
+    const duplicates = clients.length - invalid - emails.length;
+
+    if (!emails.length) {
+      showCopyStatus('No valid email addresses to copy in this list.');
+      return;
+    }
+
+    const text = emails.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (clipErr) {
+      // Fallback for browsers/contexts where the Clipboard API is blocked
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+
+    const parts = ['✅ Copied ' + emails.length + ' email' + (emails.length !== 1 ? 's' : '')];
+    if (invalid) parts.push(invalid + ' skipped — no valid email');
+    if (duplicates) parts.push(duplicates + ' duplicate' + (duplicates !== 1 ? 's' : '') + ' removed');
+    showCopyStatus(parts.join(' · '));
+  } catch (e) {
+    showCopyStatus('❌ Copy failed: ' + e.message, true);
+  }
+}
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// Shows the raw value from Excel, but flags entries that are not real addresses
+function emailCell(value) {
+  if (!value || !value.trim()) return '—';
+  if (!isRealEmail(value)) {
+    return '<span class="bad-email" title="Not a real email address — excluded from Copy all emails">' + esc(value) + '</span>';
+  }
+  return esc(value);
+}
+
+function openAddModal() {
+  editingId = null;
+  $('modalTitle').textContent = 'Add Client';
+  ['fName','fStatus','fDept','fEmail','fPhone','fNotes'].forEach(id => $(''+id).value = '');
+  $('clientModal').classList.add('active');
+}
+
+function editClient(id, name, status, dept, email, phone, notes) {
+  editingId = id;
+  $('modalTitle').textContent = 'Edit Client';
+  $('fName').value = name || '';
+  $('fStatus').value = status || '';
+  $('fDept').value = dept || '';
+  $('fEmail').value = email || '';
+  $('fPhone').value = phone || '';
+  $('fNotes').value = notes || '';
+  $('clientModal').classList.add('active');
+}
+
+function closeModal() { $('clientModal').classList.remove('active'); }
+
+async function saveClient() {
+  const body = {
+    name: $('fName').value,
+    status: $('fStatus').value,
+    department: $('fDept').value,
+    email: $('fEmail').value,
+    phone: $('fPhone').value,
+    notes: $('fNotes').value,
+  };
+  if (!body.name.trim()) { alert('Name required'); return; }
+  try {
+    if (editingId) {
+      await api('/api/clients/' + editingId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    } else {
+      await api('/api/clients', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    }
+    closeModal();
+    loadClients();
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+
+async function deleteClient(id) {
+  if (!confirm('Delete this client?')) return;
+  try {
+    await api('/api/clients/' + id, { method: 'DELETE' });
+    loadClients();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+function triggerImport() { $('importModal').classList.add('active'); }
+function closeImportModal() { $('importModal').classList.remove('active'); }
+
+async function submitImport() {
+  const files = $('importFiles').files;
+  if (!files.length) { alert('Select at least one file.'); return; }
+  const form = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    form.append('files', files[i]);
+  }
+  $('importStatus').textContent = 'Importing...';
+  try {
+    const res = await fetch('/api/import', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Import failed');
+    $('importStatus').textContent = data.message || 'Done';
+    closeImportModal();
+    await loadFilters();
+    loadClients();
+    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    $('importStatus').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function triggerSync() {
+  $('lastSync').textContent = 'Syncing...';
+  try {
+    const data = await api('/api/sync', { method: 'POST' });
+    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString() + ' (' + data.message + ')';
+    await loadFilters();
+    loadClients();
+  } catch (e) {
+    $('lastSync').textContent = 'Sync failed: ' + e.message;
+  }
+}
+
+async function exportExcel() {
+  window.location.href = '/api/export';
+}
+
+async function saveToExcel() {
+  try {
+    await api('/api/save-to-excel', { method: 'POST' });
+    $('lastSync').textContent = 'Saved: ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  }
+}
+
+async function resetImport() {
+  if (!confirm('Clear everything? All clients and uploaded files will be deleted. This cannot be undone.')) return;
+  try {
+    await api('/api/import/reset', { method: 'POST' });
+    await loadFilters();
+    loadClients();
+    $('lastSync').textContent = 'Last sync: never';
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
+}
+
+// Init
+loadFilters();
+loadClients();
+
+// Theme toggle (persisted to localStorage)
+(function () {
+  const STORAGE_KEY = 'esnet-theme';
+  const themeSwitch = $('themeSwitch');
+
+  function applyTheme() {
+    document.body.classList.toggle('dark', themeSwitch.checked);
+    localStorage.setItem(STORAGE_KEY, themeSwitch.checked ? 'dark' : 'light');
+  }
+
+  const saved = localStorage.getItem(STORAGE_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (saved) {
+    themeSwitch.checked = saved === 'dark';
+  } else {
+    themeSwitch.checked = prefersDark;
+  }
+  applyTheme();
+
+  themeSwitch.addEventListener('change', applyTheme);
+})();
+</script>
+</body>
+</html>
