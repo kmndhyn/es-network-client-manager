@@ -7,12 +7,22 @@ It is **a convenience layer over the Excel sheet**, not a replacement system:
 
 - The Excel file stays the master artifact. The app imports it, lets you fix/filter/copy
   data quickly, then writes it back (Export / Save to Excel).
-- Everything runs on `127.0.0.1:8000` on the admin's own machine. No cloud, no telemetry,
-  no outbound requests. The database is a single local file.
+- The server runs on `127.0.0.1:8000` only: no cloud, no telemetry, no outbound requests.
+- The project **and its database live on the Hermes share**, not on the admin's local disk.
+
+## Project locations
+
+| | |
+|---|---|
+| Project folder | `\\100.81.47.120\Shared Hermes Agent Database\xiv-PC\es-network` (mapped as `Y:\xiv-PC\es-network`, on the xivi-RPi NAS) |
+| Source code | https://github.com/kmndhyn/es-network-client-manager (private) |
+| Client data | `es_network.db` + `uploads\` inside that folder — **not** in GitHub |
 
 ---
 
 ## 1. How to start / stop
+
+Run these from the project folder on the share (`Y:\xiv-PC\es-network`):
 
 | | |
 |---|---|
@@ -21,7 +31,12 @@ It is **a convenience layer over the Excel sheet**, not a replacement system:
 | Manual | `venv\Scripts\activate` → `uvicorn main:app --host 127.0.0.1 --port 8000` |
 | Stop | Close the terminal window / `Ctrl+C` |
 
-The UI is only reachable from that machine. Nothing is exposed to the network.
+First start after a boot (or after the share was idle) can take **30–60 seconds** while Python
+loads from the NAS — the page stays unreachable until the console prints
+`Uvicorn running on http://127.0.0.1:8000`. That is normal, don't restart it.
+
+The UI is only reachable from that machine, but the folder itself sits on a shared NAS volume,
+so treat the files there as visible to anyone with access to the Hermes share.
 
 ---
 
@@ -34,8 +49,10 @@ The UI is only reachable from that machine. Nothing is exposed to the network.
 | `static/index.html` | The whole front end (HTML + CSS + JS in one file). |
 | `main.py` / `database.py` | API and table schema. |
 
-Deleting `es_network.db` or pressing **Reset** wipes all records. Back up the folder before
-any demo or handover.
+Deleting `es_network.db` or pressing **Reset** wipes all records. The database is a SQLite file
+on an SMB share: it is fine for one admin at a time, but do not run the app from two machines
+against the same folder, and prefer **Export** over long editing sessions if the NAS connection
+is flaky. Back up the folder before any demo or handover.
 
 ---
 
