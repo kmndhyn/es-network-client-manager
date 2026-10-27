@@ -1,8 +1,6 @@
 # Client Manager
 
-Local-only WebUI. No cloud, no telemetry, no external calls.
-
-See `HANDOFF.md` for the full feature walkthrough and cautions.
+Local WebUI served over your Tailscale tailnet. No cloud, no telemetry, no external calls.
 
 ## Quick Start
 
@@ -44,7 +42,7 @@ uvicorn main:app --host 127.0.0.1 --port 8000
 5. **Sync** — re-imports the same uploaded files.
 6. **Export** — downloads the current DB as Excel.
 7. **Save to Excel** — writes the DB back into the workbooks in `uploads/`; this replaces the
-   whole workbook, so back up the master file first (see `HANDOFF.md` §6).
+   whole workbook (only these six columns survive), so back up the master file first.
 
 ## File Layout
 
