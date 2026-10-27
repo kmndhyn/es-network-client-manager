@@ -9,6 +9,14 @@ See `HANDOFF.md` for the full feature walkthrough and cautions.
 ### Mac
 Double-click `run.command`
 
+On the Mac the app is published on the tailnet (Tailscale Serve) rather than localhost:
+
+    https://kims-macbook-pro.tail9a2e96.ts.net/
+
+Open that URL from any device signed in to the same tailnet (your PC, phone, etc.).
+The server still binds `127.0.0.1` only; Tailscale provides the HTTPS entry point, so
+nothing is exposed on the local LAN or the public internet.
+
 ### Windows
 Double-click `run.bat`
 
@@ -16,9 +24,16 @@ Double-click `run.bat`
 ```bash
 cd ~/es-network
 source venv/bin/activate   # or venv\Scripts\activate on Windows
+tailscale serve --bg 8000  # Mac only
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
-Then open http://127.0.0.1:8000
+
+## Tailnet Notes
+
+- Access requires Tailscale running and signed in on both devices.
+- The Mac must stay awake with the terminal open while serving.
+- Stop publishing: `tailscale serve --https=443 off` · Check: `tailscale serve status`
+
 
 ## How to Use
 
