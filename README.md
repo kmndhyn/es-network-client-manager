@@ -1,48 +1,56 @@
 # Client Manager
 
-Local WebUI served over your Tailscale tailnet. No cloud, no telemetry, no external calls.
+Local web UI for keeping client and contact records in Excel. Runs on your own
+machine — no cloud, no telemetry, no external calls.
 
 ## Quick Start
 
 ### Mac
-Double-click `run.command`
-
-On the Mac the app is published on the tailnet (Tailscale Serve) rather than localhost:
-
-    https://kims-macbook-pro.tail9a2e96.ts.net/
-
-Open that URL from any device signed in to the same tailnet (your PC, phone, etc.).
-The server still binds `127.0.0.1` only; Tailscale provides the HTTPS entry point, so
-nothing is exposed on the local LAN or the public internet.
+Double-click `run.command`, then open http://127.0.0.1:8000
 
 ### Windows
-Double-click `run.bat`
+Double-click `run.bat`, then open http://127.0.0.1:8000
 
 ### Manual
 ```bash
 cd ~/es-network
 source venv/bin/activate   # or venv\Scripts\activate on Windows
-tailscale serve --bg 8000  # Mac only
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-## Tailnet Notes
+## Optional: use it from another device
+
+The server binds `127.0.0.1` only, so nothing is exposed on your LAN or the
+public internet. To reach it from your phone or another computer, publish it on
+your Tailscale tailnet:
+
+```bash
+tailscale serve --bg 8000     # Mac; run.command does this automatically when installed
+```
+
+Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 - Access requires Tailscale running and signed in on both devices.
-- The Mac must stay awake with the terminal open while serving.
+- The host must stay awake with the terminal open while serving.
 - Stop publishing: `tailscale serve --https=443 off` · Check: `tailscale serve status`
-
 
 ## How to Use
 
-1. **Import** — click "Import" and select 1 or more Excel files (.xlsx/.xls). Columns are auto-detected, first sheet only.
-2. **Filter** — use the Status and Department dropdowns (built from your data) + name search.
-3. **Copy all emails** — copies the filtered rows' valid emails, one per line (placeholders like `UNKNOWN` are skipped).
-4. **Add/Edit/Delete** — manual entry or edit existing rows.
-5. **Sync** — re-imports the same uploaded files.
-6. **Export** — downloads the current DB as Excel.
-7. **Save to Excel** — writes the DB back into the workbooks in `uploads/`; this replaces the
-   whole workbook (only these six columns survive), so back up the master file first.
+1. **Import** — click "Import" and choose 1 or more Excel files (.xlsx/.xls). First sheet only,
+   columns auto-detected. Re-importing the same filename replaces that file's rows.
+2. **Filter** — dropdowns are built from any column with 15 or fewer distinct values, plus the
+   search box which matches every field. Press `/` to jump to search.
+3. **Add/Edit/Delete** — "Add client", or the pencil/trash icons on a row.
+4. **Copy emails** — copies valid addresses from the rows currently shown, one per line,
+   deduplicated. Placeholders like `UNKNOWN` are skipped.
+5. **Save to file** — asks which you want:
+   - **Download a new sheet** — writes a fresh .xlsx from the database, never touches your files.
+   - **Overwrite the imported file** — replaces the workbook in `uploads/` with the current rows.
+6. **Sync** — rebuilds the database from the files in `uploads/`. Rows added by hand since the
+   last import are discarded; download a copy first if you want to keep them.
+7. **Export** — downloads the current database as Excel (same as "Download a new sheet").
+8. **Reset** — wipes the database and the files in `uploads/`.
+9. **Dark mode** — toggle in the top-right; the choice is remembered.
 
 ## File Layout
 

@@ -11,17 +11,20 @@ SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
 
-class Client(Base):
-    __tablename__ = "clients"
-
+class ImportMeta(Base):
+    __tablename__ = "import_meta"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    status = Column(String(100))
-    department = Column(String(100))
-    email = Column(String(255))
-    phone = Column(String(50))
-    notes = Column(Text)
+    source_file = Column(String(255), unique=True)
+    columns = Column(Text)  # JSON list of original column names
+    imported_at = Column(DateTime, server_default=func.now())
+
+
+class ClientRow(Base):
+    __tablename__ = "client_rows"
+    id = Column(Integer, primary_key=True, autoincrement=True)
     source_file = Column(String(255))
+    row_index = Column(Integer)  # original Excel row, -1 = manually added
+    data = Column(Text)  # JSON dict of column -> value
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

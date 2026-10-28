@@ -1,603 +1,885 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Client Manager</title>
+<title>ES Network — Client Manager</title>
 <style>
   :root {
-    --bg: #f4f5f7;
+    --bg: #f6f7f9;
+    --glow: radial-gradient(1100px 520px at 100% -10%, #e3ecfd 0%, transparent 60%);
     --card: #ffffff;
-    --text: #1a1a1a;
+    --text: #111827;
     --muted: #6b7280;
     --border: #e5e7eb;
+    --thead: #f9fafb;
+    --zebra: #fbfcfe;
+    --row-hover: #f1f5fd;
     --accent: #2563eb;
     --accent-hover: #1d4ed8;
+    --accent-soft: #eff6ff;
     --danger: #dc2626;
-    --success: #059669;
-    --row-hover: #f9f5f7;
+    --danger-soft: #fef2f2;
+    --ok: #047857;
+    --ok-soft: #ecfdf5;
+    --warn: #b45309;
+    --warn-soft: #fffbeb;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 10px 26px rgba(16, 24, 40, .06);
+    --radius: 12px;
   }
-    body.dark {
-    --bg: #111827;
-    --card: #1f2937;
-    --text: #f9fafb;
-    --muted: #9ca3af;
-    --border: #374151;
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0b1220;
+    --glow: radial-gradient(1100px 520px at 100% -10%, #16294a 0%, transparent 60%);
+    --card: #111a2b;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --border: #1f2a3d;
+    --thead: #0e1728;
+    --zebra: #0d1625;
+    --row-hover: #182741;
     --accent: #3b82f6;
     --accent-hover: #2563eb;
-    --danger: #ef4444;
-    --success: #10b981;
-    --row-hover: #1e293b;
+    --accent-soft: #16233c;
+    --danger: #f87171;
+    --danger-soft: #2a1616;
+    --ok: #34d399;
+    --ok-soft: #0d2a21;
+    --warn: #fbbf24;
+    --warn-soft: #2a2311;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px rgba(0, 0, 0, .35);
   }
-    body.dark .modal-overlay {
-    background: rgba(0,0,0,0.7);
-    }
-    .theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-.theme-toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-}
-.theme-toggle .slider {
-  width: 46px;
-  height: 24px;
-  background: #cbd5e1;
-  border-radius: 999px;
-  position: relative;
-  flex: none;
-  transition: background 0.3s;
-}
-.theme-toggle .knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.3s, background 0.3s;
-}
-.theme-toggle .icon {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 13px;
-  height: 13px;
-  transition: opacity 0.2s, transform 0.3s;
-}
-.theme-toggle .icon-sun {
-  color: #f59e0b;
-  opacity: 1;
-  transform: rotate(0deg) scale(1);
-}
-.theme-toggle .icon-moon {
-  color: #e2e8f0;
-  opacity: 0;
-  transform: rotate(-90deg) scale(0.5);
-}
-.theme-toggle input:checked + .slider {
-  background: #334155;
-}
-.theme-toggle input:checked + .slider .knob {
-  transform: translateX(22px);
-  background: #0f172a;
-}
-.theme-toggle input:checked + .slider .icon-sun {
-  opacity: 0;
-  transform: rotate(90deg) scale(0.5);
-}
-.theme-toggle input:checked + .slider .icon-moon {
-  opacity: 1;
-  transform: rotate(0deg) scale(1);
-}
-.theme-toggle input:focus-visible + .slider {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-body.dark th { background: #374151; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { min-height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--glow), var(--bg);
+    background-attachment: fixed;
     color: var(--text);
     margin: 0;
-    padding: 24px;
+    padding: 28px 24px 48px;
+    -webkit-font-smoothing: antialiased;
   }
-  .container { max-width: 1200px; margin: 0 auto; }
-  h1 { margin: 0 0 4px; font-size: 22px; }
-  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .container { max-width: 1440px; margin: 0 auto; }
 
+  /* ── Page head ─────────────────────────────────────────── */
+  .page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 4px var(--ok-soft);
+    flex: none;
+  }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 6px 0 0 20px; }
+
+  /* ── Buttons ───────────────────────────────────────────── */
+  button {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 8px 13px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s, transform .06s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  button.ghost:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button.danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  button.small { padding: 5px 10px; font-size: 12.5px; }
+  .icon-btn {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+    padding: 6px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+  }
+  .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+  #themeToggle .icon-moon { display: none; }
+  [data-theme="dark"] #themeToggle .icon-sun { display: none; }
+  [data-theme="dark"] #themeToggle .icon-moon { display: block; }
+
+  /* ── Cards ─────────────────────────────────────────────── */
   .card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
     margin-bottom: 16px;
   }
+
+  /* ── Toolbar ───────────────────────────────────────────── */
   .toolbar {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
   }
-  select, input[type="text"] {
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 14px;
-    min-width: 150px;
+  .search-wrap {
+    position: relative;
+    flex: 1 1 260px;
+    max-width: 420px;
   }
-  button {
-    padding: 8px 14px;
-    border: none;
-    border-radius: 6px;
-    background: var(--accent);
-    color: white;
-    cursor: pointer;
-    font-size: 14px;
+  .search-wrap svg {
+    position: absolute;
+    left: 11px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
   }
-  button:hover { background: var(--accent-hover); }
-  button.danger { background: var(--danger); }
-  button.secondary { background: #6b7280; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  table {
+  .search-wrap input {
     width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
+    padding: 9px 12px 9px 34px;
+    font: inherit;
+    font-size: 13.5px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
-  th, td {
-    text-align: left;
-    padding: 10px;
-    border-bottom: 1px solid var(--border);
+  .search-wrap input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--card);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
-  th { background: #f9fafb; font-weight: 600; }
-  tr:hover { background: var(--row-hover); }
+  .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .toolbar-actions .sep {
+    width: 1px;
+    height: 22px;
+    background: var(--border);
+    margin: 0 2px;
+  }
 
+  /* ── Filters ───────────────────────────────────────────── */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+  select {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    max-width: 220px;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  .status-line {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 10px;
+    min-height: 16px;
+  }
+  .status-line .count { font-weight: 600; color: var(--text); }
+  .status-line .msg { color: var(--accent); }
+
+  /* ── Table ─────────────────────────────────────────────── */
+  .table-card { padding: 0; overflow: hidden; }
+  .table-wrap { max-height: calc(100vh - 290px); overflow: auto; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--thead);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) td { background: var(--zebra); }
+  tbody tr:hover td { background: var(--row-hover); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td a { color: var(--accent); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .muted { color: var(--muted); }
+  .actions { width: 1%; white-space: nowrap; text-align: right; }
+  .actions .icon-btn + .icon-btn { margin-left: 2px; }
+
+  .pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    border: 1px solid transparent;
+  }
+  .pill-ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 22%, transparent); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+  .pill-bad { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 22%, transparent); }
+  .pill-neutral { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+  .empty { text-align: center; padding: 56px 20px; color: var(--muted); }
+  .empty strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 4px; }
+
+  /* ── Modal ─────────────────────────────────────────────── */
   .modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(8, 12, 22, .5);
+    backdrop-filter: blur(3px);
     justify-content: center;
     align-items: center;
+    padding: 20px;
     z-index: 100;
   }
   .modal-overlay.active { display: flex; }
   .modal {
     background: var(--card);
-    border-radius: 8px;
-    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+    padding: 22px;
     width: 100%;
-    max-width: 480px;
-    max-height: 90vh;
+    max-width: 760px;
+    max-height: 88vh;
     overflow-y: auto;
   }
-  .modal h2 { margin: 0 0 12px; font-size: 18px; }
-  .field { margin-bottom: 10px; }
-  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .field input, .field select, .field textarea {
+  .modal h2 { margin: 0 0 4px; font-size: 17px; letter-spacing: -0.01em; }
+  .modal .hint { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { margin: 0; }
+  .field.wide { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field textarea {
     width: 100%;
-    padding: 8px 10px;
+    font: inherit;
+    font-size: 13.5px;
+    color: var(--text);
+    background: var(--bg);
+    padding: 9px 11px;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 14px;
+    border-radius: 8px;
   }
-  .field textarea { min-height: 60px; resize: vertical; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .field input:focus, .field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--card);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 
-  .status-badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 12px;
-    background: #dbeafe;
-    color: #1e40af;
+  .save-options { display: grid; gap: 10px; }
+  .save-option {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    text-align: left;
+    padding: 13px 14px;
+    border-radius: 10px;
+    white-space: normal;
+    line-height: 1.45;
   }
-  .empty { text-align: center; padding: 40px; color: var(--muted); }
-  .last-sync { font-size: 12px; color: var(--muted); margin-top: 8px; }
-  .copy-status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 15px; }
-  .bad-email {
-    color: var(--muted);
-    font-style: italic;
-    border-bottom: 1px dotted var(--muted);
-    cursor: help;
+  .save-option svg { flex: none; margin-top: 2px; }
+  .save-option strong { display: block; font-size: 13.5px; color: var(--text); }
+  .save-option small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .save-option:hover strong { color: inherit; }
+  .save-option.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+  .save-option:disabled { opacity: .45; }
+  .save-option code { font-size: 11.5px; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+
+  @media (max-width: 720px) {
+    body { padding: 18px 12px 32px; }
+    .fields { grid-template-columns: 1fr; }
+    .toolbar { align-items: stretch; }
+    .search-wrap { max-width: none; }
+    .table-wrap { max-height: none; }
+    thead th, tbody td { padding: 9px 10px; }
   }
-  .actions { display: flex; gap: 6px; }
-  .actions button { padding: 4px 8px; font-size: 12px; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Client Manager</h1>
-  <p class="subtitle">Local database • No cloud sync</p>
 
-  <div class="card">
-    <div class="toolbar">
-      <select id="filterStatus"><option value="">All Statuses</option></select>
-      <select id="filterDept"><option value="">All Departments</option></select>
-      <input type="text" id="filterSearch" placeholder="Search name...">
-      <button onclick="loadClients()">Apply</button>
-      <button onclick="copyEmails()">📋 Copy all emails</button>
-      <button onclick="openAddModal()">+ Add Client</button>
-      <button onclick="triggerImport()">Import</button>
-      <button onclick="triggerSync()" class="secondary">Sync</button>
-      <button onclick="saveToExcel()" class="secondary">Save to Excel</button>
-      <button onclick="exportExcel()" class="secondary">Export</button>
-      <button onclick="resetImport()" class="secondary">Reset</button>
+  <header class="page-head">
+    <div>
+      <h1><span class="dot" aria-hidden="true"></span>ES Network</h1>
+      <p class="subtitle" id="subtitle">Client manager · local database · no cloud sync</p>
     </div>
-    <p class="subtitle">Local database • No cloud sync</p>
-    <label class="theme-toggle" title="Toggle dark mode">
-      <input type="checkbox" id="themeSwitch" aria-label="Toggle dark mode">
-      <span class="slider">
-        <span class="knob">
-          <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="4.2"></circle>
-            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
-          </svg>
-          <svg class="icon icon-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
-          </svg>
-        </span>
-      </span>
-    </label>
-    <div class="copy-status" id="copyStatus"></div>
-    <div class="last-sync" id="lastSync">Last sync: never</div>
+    <button class="ghost icon-btn" id="themeToggle" aria-pressed="false" title="Toggle dark mode" aria-label="Toggle dark mode">
+      <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      </svg>
+      <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="card toolbar">
+    <div class="search-wrap">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>
+      </svg>
+      <input type="text" id="filterSearch" placeholder="Search all fields…" aria-label="Search all fields" autocomplete="off">
+    </div>
+    <div class="toolbar-actions">
+      <button onclick="openAddModal()">+ Add client</button>
+      <button onclick="triggerImport()">Import</button>
+      <button class="ghost" id="copyBtn" onclick="copyEmails()" hidden>Copy emails</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="ghost" onclick="triggerSync()">Sync</button>
+      <button class="ghost" onclick="openSaveModal()">Save to file</button>
+      <button class="ghost" onclick="exportExcel()">Export</button>
+      <button class="ghost danger" onclick="resetImport()">Reset</button>
+    </div>
+    <div class="filter-bar" id="filterBar" hidden></div>
+    <div class="status-line">
+      <span class="count" id="countLabel">Loading…</span>
+      <span class="msg" id="statusMsg"></span>
+      <span id="lastSync">Last sync: never</span>
+    </div>
   </div>
 
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Department</th>
-          <th>Email</th>
-          <th>Phone</th>
-          <th>Notes</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="clientTable">
-        <tr><td colspan="7" class="empty">No clients loaded. Import Excel or add manually.</td></tr>
-      </tbody>
-    </table>
+  <div class="card table-card">
+    <div class="table-wrap">
+      <table>
+        <thead id="tableHead"><tr><th>No data</th></tr></thead>
+        <tbody id="clientTable">
+          <tr><td colspan="2" class="empty"><strong>No clients yet</strong>Import an Excel file or add a client to get started.</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
-<!-- Add/Edit Modal -->
-<div class="modal-overlay" id="clientModal">
+<!-- Add / Edit modal -->
+<div class="modal-overlay" id="clientModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
-    <h2 id="modalTitle">Add Client</h2>
-    <div class="field"><label>Name</label><input id="fName"></div>
-    <div class="field"><label>Status</label><input id="fStatus"></div>
-    <div class="field"><label>Department</label><input id="fDept"></div>
-    <div class="field"><label>Email</label><input id="fEmail"></div>
-    <div class="field"><label>Phone</label><input id="fPhone"></div>
-    <div class="field"><label>Notes</label><textarea id="fNotes"></textarea></div>
+    <h2 id="modalTitle">Add client</h2>
+    <p class="hint" id="modalHint">One field per spreadsheet column.</p>
+    <div class="fields" id="modalFields"></div>
     <div class="modal-actions">
-      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="ghost" onclick="closeModal()">Cancel</button>
       <button onclick="saveClient()">Save</button>
     </div>
   </div>
 </div>
 
-<!-- Import Modal -->
-<div class="modal-overlay" id="importModal">
-  <div class="modal">
-    <h2>Import Excel</h2>
-    <p style="font-size:13px;color:var(--muted)">Select sheet to import for Database.</p>
-    <div class="field">
-      <label>Select Excel file(s) — hold Cmd/Ctrl to pick multiple</label>
+<!-- Import modal -->
+<div class="modal-overlay" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+  <div class="modal" style="max-width:520px">
+    <h2 id="importTitle">Import Excel</h2>
+    <p class="hint">First sheet of each file. Re-importing the same filename replaces its rows.</p>
+    <div class="field wide">
+      <label for="importFiles">Excel files (.xlsx / .xls)</label>
       <input type="file" id="importFiles" accept=".xlsx,.xls" multiple>
     </div>
-    <div id="importStatus" style="font-size:13px;margin:8px 0;"></div>
+    <div id="importStatus" class="status-line"></div>
     <div class="modal-actions">
-      <button class="secondary" onclick="closeImportModal()">Cancel</button>
+      <button class="ghost" onclick="closeImportModal()">Cancel</button>
       <button onclick="submitImport()">Import</button>
     </div>
   </div>
 </div>
 
+<!-- Save modal -->
+<div class="modal-overlay" id="saveModal" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+  <div class="modal" style="max-width:540px">
+    <h2 id="saveTitle">Save to Excel</h2>
+    <p class="hint" id="saveHint">Choose whether to download a new workbook or replace the imported file.</p>
+    <div class="save-options">
+      <button class="ghost save-option" onclick="downloadCopy()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span>
+          <strong>Download a new sheet</strong>
+          <small>Writes a fresh .xlsx from the database. Never touches your imported files.</small>
+        </span>
+      </button>
+      <button class="ghost save-option danger" id="overwriteBtn" onclick="overwriteFiles()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span>
+          <strong>Overwrite the imported file</strong>
+          <small id="saveTargets">Replaces the workbook in <code>uploads/</code> with the current rows.</small>
+        </span>
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" onclick="closeSaveModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
+let tableColumns = [];
+let sourceFiles = [];
+let currentRows = [];
+let rowsById = new Map();
 let editingId = null;
+let searchTimer = null;
+
+const EMAIL_COL = /^(e-?mail(\s*address)?|contact\s*e-?mail)$/i;
+const STATUS_COL = /(^|\s)(status|state|stage)$/i;
+const DATE_COL = /(date|emailed|updated|created)/i;
 
 function $(id) { return document.getElementById(id); }
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, opts);
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || res.statusText);
+    let detail = txt || res.statusText;
+    try { detail = JSON.parse(txt).detail || detail; } catch (_) {}
+    throw new Error(detail);
   }
   return res.json().catch(() => ({}));
 }
 
-async function loadFilters() {
-  try {
-    const data = await api('/api/filters');
-    const st = $('filterStatus');
-    st.innerHTML = '<option value="">All Statuses</option>';
-    data.statuses.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; st.appendChild(o); });
-    const de = $('filterDept');
-    de.innerHTML = '<option value="">All Departments</option>';
-    data.departments.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; de.appendChild(o); });
-  } catch (e) { console.error(e); }
-}
+// ── Formatters ──────────────────────────────────────────────
 
-async function loadClients() {
-  const status = $('filterStatus').value;
-  const dept = $('filterDept').value;
-  const search = $('filterSearch').value;
-  const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (dept) params.set('department', dept);
-  if (search) params.set('search', search);
-  try {
-    const clients = await api('/api/clients?' + params.toString());
-    const tbody = $('clientTable');
-    if (!clients.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">No clients match filters.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = clients.map(c => `
-      <tr>
-        <td>${esc(c.name)}</td>
-        <td><span class="status-badge">${esc(c.status || '—')}</span></td>
-        <td>${esc(c.department || '—')}</td>
-        <td>${emailCell(c.email)}</td>
-        <td>${esc(c.phone || '—')}</td>
-        <td>${esc(c.notes || '—')}</td>
-        <td class="actions">
-          <button onclick="editClient(${c.id}, '${esc(c.name)}', '${esc(c.status)}', '${esc(c.department)}', '${esc(c.email)}', '${esc(c.phone)}', '${esc(c.notes)}')">Edit</button>
-          <button onclick="deleteClient(${c.id})" class="danger">Del</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (e) {
-    alert('Failed to load clients: ' + e.message);
-  }
-}
-
-// Values that show up in the Email column of the Excel files but are not real addresses
 const EMAIL_PLACEHOLDERS = new Set([
-  'unknown', 'none', 'null', 'nil', 'n/a', 'na', 'n.a.', 'n.a', 'not available',
+  'unknown', 'none', 'null', 'nil', 'n/a', 'na', 'n.a.', 'not available',
   'not provided', 'no email', 'no e-mail', 'missing', 'tbd', 'pending', '-', '--', '—', '?'
 ]);
 
-// True only for something we can actually mail: has a local part, an @, and a dotted domain
 function isRealEmail(value) {
   const raw = String(value == null ? '' : value).trim();
   if (!raw) return false;
   const key = raw.toLowerCase().replace(/\s+/g, ' ');
   if (EMAIL_PLACEHOLDERS.has(key)) return false;
-  if (/^(unknown|none|null|n\/?a\b|no\s*e-?mail|not\s+(available|provided))/.test(key)) return false;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw)) return false;
-  return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw);
 }
 
-function showCopyStatus(text, isError = false) {
-  const msg = $('copyStatus');
-  if (!msg) return;
-  msg.textContent = text;
-  msg.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-  clearTimeout(showCopyStatus.timer);
-  showCopyStatus.timer = setTimeout(() => { msg.textContent = ''; }, 5000);
+function pillTone(v) {
+  const s = v.toLowerCase();
+  if (/(unsub|inactive|disabled|blocked|bounce|invalid|expired|cancel|fail|no\b)/.test(s)) return 'bad';
+  if (/(pending|trial|paused|warn|unknown|review|new)/.test(s)) return 'warn';
+  if (/(sub|active|ok|valid|verified|paid|enabled|complete|done)/.test(s)) return 'ok';
+  return 'neutral';
 }
 
-async function copyEmails() {
-  const status = $('filterStatus').value;
-  const dept = $('filterDept').value;
-  const search = $('filterSearch').value;
+function cellHtml(col, value) {
+  const v = String(value == null ? '' : value).trim();
+  if (!v) return '<span class="muted">—</span>';
+
+  if (STATUS_COL.test(col)) return `<span class="pill pill-${pillTone(v)}">${esc(v)}</span>`;
+
+  if (EMAIL_COL.test(col)) {
+    if (!isRealEmail(v)) return `<span class="muted" title="Not a mailable address">${esc(v)}</span>`;
+    return `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+  }
+
+  const d = new Date(v);
+  if (DATE_COL.test(col) && /^\d{4}-\d{2}-\d{2}/.test(v) && !isNaN(d)) {
+    return `<span title="${esc(v)}">${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>`;
+  }
+
+  return esc(v);
+}
+
+// ── Data loading ────────────────────────────────────────────
+
+async function loadColumns() {
+  const data = await api('/api/columns');
+  tableColumns = data.columns || [];
+  sourceFiles = data.sources || [];
+  buildTableHeader();
+  await buildFilterBar();
+}
+
+function buildTableHeader() {
+  const thead = $('tableHead');
+  const hasEmail = tableColumns.some(c => EMAIL_COL.test(c));
+  $('copyBtn').hidden = !hasEmail;
+  thead.innerHTML = tableColumns.length
+    ? '<tr>' + tableColumns.map(c => `<th scope="col">${esc(c)}</th>`).join('') + '<th scope="col" class="actions">Actions</th></tr>'
+    : '<tr><th>No data</th></tr>';
+}
+
+async function buildFilterBar() {
+  const bar = $('filterBar');
+  let filterable = {};
+  try {
+    filterable = (await api('/api/filters')).filterable || {};
+  } catch (e) {
+    console.error('Failed to load filters:', e);
+  }
+  const entries = Object.entries(filterable);
+  bar.innerHTML = '';
+  bar.hidden = !entries.length;
+  if (!entries.length) return;
+
+  entries.forEach(([col, values]) => {
+    const sel = document.createElement('select');
+    sel.dataset.col = col;
+    sel.setAttribute('aria-label', `Filter by ${col}`);
+    sel.innerHTML = `<option value="">${esc(col)}: all</option>` +
+      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    sel.onchange = () => loadClients();
+    bar.appendChild(sel);
+  });
+
+  const clear = document.createElement('button');
+  clear.className = 'ghost small';
+  clear.textContent = 'Clear filters';
+  clear.onclick = () => {
+    bar.querySelectorAll('select').forEach(s => { s.value = ''; });
+    loadClients();
+  };
+  bar.appendChild(clear);
+}
+
+async function loadClients() {
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (dept) params.set('department', dept);
+  const search = $('filterSearch').value.trim();
   if (search) params.set('search', search);
+  $('filterBar').querySelectorAll('select').forEach(sel => {
+    if (sel.value) params.set(sel.dataset.col, sel.value);
+  });
+
   try {
     const clients = await api('/api/clients?' + params.toString());
-    const seen = new Set();
-    const emails = [];
-    let invalid = 0;
-    clients.forEach(c => {
-      if (!isRealEmail(c.email)) { invalid++; return; }
-      const email = c.email.trim();
-      const key = email.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      emails.push(email);
-    });
-    const duplicates = clients.length - invalid - emails.length;
+    currentRows = clients;
+    rowsById = new Map(clients.map(c => [c.id, c]));
+    renderRows(clients);
 
-    if (!emails.length) {
-      showCopyStatus('No valid email addresses to copy in this list.');
-      return;
-    }
-
-    const text = emails.join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (clipErr) {
-      // Fallback for browsers/contexts where the Clipboard API is blocked
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.top = '-1000px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      ta.remove();
-    }
-
-    const parts = ['✅ Copied ' + emails.length + ' email' + (emails.length !== 1 ? 's' : '')];
-    if (invalid) parts.push(invalid + ' skipped — no valid email');
-    if (duplicates) parts.push(duplicates + ' duplicate' + (duplicates !== 1 ? 's' : '') + ' removed');
-    showCopyStatus(parts.join(' · '));
+    const n = clients.length;
+    $('countLabel').textContent = `${n} client${n === 1 ? '' : 's'}`;
+    if (params.toString()) $('countLabel').textContent += ' shown';
   } catch (e) {
-    showCopyStatus('❌ Copy failed: ' + e.message, true);
+    $('statusMsg').textContent = 'Load failed: ' + e.message;
   }
 }
 
-function esc(s) {
-  return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function renderRows(clients) {
+  const tbody = $('clientTable');
+  const span = Math.max(tableColumns.length + 1, 2);
+
+  if (!clients.length) {
+    tbody.innerHTML = `<tr><td colspan="${span}" class="empty"><strong>Nothing to show</strong>Import an Excel file, add a client, or clear the filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = clients.map(c => {
+    const data = c.data || {};
+    const cells = tableColumns.map(col => {
+      const raw = String(data[col] == null ? '' : data[col]);
+      return `<td title="${esc(raw)}">${cellHtml(col, raw)}</td>`;
+    }).join('');
+    return `<tr>${cells}<td class="actions">
+      <button class="icon-btn" title="Edit" aria-label="Edit ${esc(data[tableColumns[0]] || '')}" onclick="editClient(${c.id})">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </button>
+      <button class="icon-btn danger" title="Delete" aria-label="Delete" onclick="deleteClient(${c.id})">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+      </button>
+    </td></tr>`;
+  }).join('');
 }
 
-// Shows the raw value from Excel, but flags entries that are not real addresses
-function emailCell(value) {
-  if (!value || !value.trim()) return '—';
-  if (!isRealEmail(value)) {
-    return '<span class="bad-email" title="Not a real email address — excluded from Copy all emails">' + esc(value) + '</span>';
-  }
-  return esc(value);
+function setStatus(msg) {
+  $('statusMsg').textContent = msg;
+  clearTimeout(setStatus.timer);
+  setStatus.timer = setTimeout(() => { $('statusMsg').textContent = ''; }, 6000);
 }
+
+// ── Copy emails ─────────────────────────────────────────────
+
+async function copyEmails() {
+  const col = tableColumns.find(c => EMAIL_COL.test(c));
+  if (!col) { setStatus('No email column in this data.'); return; }
+
+  const seen = new Set();
+  const emails = [];
+  let skipped = 0;
+  currentRows.forEach(r => {
+    const v = String((r.data || {})[col] ?? '').trim();
+    if (!isRealEmail(v)) { skipped++; return; }
+    const key = v.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    emails.push(v);
+  });
+
+  if (!emails.length) { setStatus('No valid email addresses in this view.'); return; }
+
+  const text = emails.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  setStatus(`Copied ${emails.length} email${emails.length === 1 ? '' : 's'}` + (skipped ? ` · ${skipped} skipped` : ''));
+}
+
+// ── Add / edit ──────────────────────────────────────────────
 
 function openAddModal() {
   editingId = null;
-  $('modalTitle').textContent = 'Add Client';
-  ['fName','fStatus','fDept','fEmail','fPhone','fNotes'].forEach(id => $(''+id).value = '');
-  $('clientModal').classList.add('active');
+  $('modalTitle').textContent = 'Add client';
+  $('modalHint').textContent = 'One field per spreadsheet column.';
+  buildModalFields({});
+  openModal('clientModal');
 }
 
-function editClient(id, name, status, dept, email, phone, notes) {
+function editClient(id) {
+  const row = rowsById.get(id);
+  if (!row) return;
   editingId = id;
-  $('modalTitle').textContent = 'Edit Client';
-  $('fName').value = name || '';
-  $('fStatus').value = status || '';
-  $('fDept').value = dept || '';
-  $('fEmail').value = email || '';
-  $('fPhone').value = phone || '';
-  $('fNotes').value = notes || '';
-  $('clientModal').classList.add('active');
+  $('modalTitle').textContent = 'Edit client';
+  $('modalHint').textContent = row.source_file ? `From ${row.source_file}` : '';
+  buildModalFields(row.data || {});
+  openModal('clientModal');
+}
+
+function buildModalFields(data) {
+  const container = $('modalFields');
+  container.innerHTML = '';
+  tableColumns.forEach(col => {
+    const div = document.createElement('div');
+    div.className = 'field' + (/note|comment|remark|desc/i.test(col) ? ' wide' : '');
+    const input = document.createElement('input');
+    input.dataset.col = col;
+    input.id = 'f_' + col.replace(/\W+/g, '_');
+    input.value = data[col] == null ? '' : String(data[col]);
+    const label = document.createElement('label');
+    label.htmlFor = input.id;
+    label.textContent = col;
+    div.append(label, input);
+    container.appendChild(div);
+  });
+}
+
+function openModal(id) {
+  $(id).classList.add('active');
+  const first = $(id).querySelector('input, select, button');
+  if (first) first.focus();
 }
 
 function closeModal() { $('clientModal').classList.remove('active'); }
+function closeImportModal() { $('importModal').classList.remove('active'); }
 
 async function saveClient() {
-  const body = {
-    name: $('fName').value,
-    status: $('fStatus').value,
-    department: $('fDept').value,
-    email: $('fEmail').value,
-    phone: $('fPhone').value,
-    notes: $('fNotes').value,
-  };
-  if (!body.name.trim()) { alert('Name required'); return; }
+  const body = {};
+  $('modalFields').querySelectorAll('input').forEach(inp => { body[inp.dataset.col] = inp.value; });
   try {
     if (editingId) {
       await api('/api/clients/' + editingId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      setStatus('Client updated.');
     } else {
       await api('/api/clients', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      setStatus('Client added.');
     }
     closeModal();
-    loadClients();
-  } catch (e) { alert('Save failed: ' + e.message); }
+    await loadClients();
+  } catch (e) { setStatus('Save failed: ' + e.message); }
 }
 
 async function deleteClient(id) {
-  if (!confirm('Delete this client?')) return;
+  const row = rowsById.get(id);
+  const label = row && tableColumns[0] ? row.data[tableColumns[0]] : '';
+  if (!confirm(`Delete ${label ? `"${label}"` : 'this client'}?`)) return;
   try {
     await api('/api/clients/' + id, { method: 'DELETE' });
-    loadClients();
-  } catch (e) { alert('Delete failed: ' + e.message); }
+    setStatus('Client deleted.');
+    await loadClients();
+  } catch (e) { setStatus('Delete failed: ' + e.message); }
 }
 
-function triggerImport() { $('importModal').classList.add('active'); }
-function closeImportModal() { $('importModal').classList.remove('active'); }
+// ── Import / sync / export ──────────────────────────────────
+
+function triggerImport() { $('importStatus').textContent = ''; openModal('importModal'); }
 
 async function submitImport() {
   const files = $('importFiles').files;
-  if (!files.length) { alert('Select at least one file.'); return; }
+  if (!files.length) { $('importStatus').textContent = 'Select at least one file.'; return; }
+
   const form = new FormData();
-  for (let i = 0; i < files.length; i++) {
-    form.append('files', files[i]);
-  }
-  $('importStatus').textContent = 'Importing...';
+  for (const f of files) form.append('files', f);
+
+  $('importStatus').textContent = 'Importing…';
   try {
     const res = await fetch('/api/import', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Import failed');
-    $('importStatus').textContent = data.message || 'Done';
     closeImportModal();
-    await loadFilters();
-    loadClients();
+    await loadColumns();
+    await loadClients();
     $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
+    setStatus(data.message || 'Import complete.');
   } catch (e) {
     $('importStatus').textContent = 'Error: ' + e.message;
   }
 }
 
 async function triggerSync() {
-  $('lastSync').textContent = 'Syncing...';
+  $('statusMsg').textContent = 'Syncing…';
   try {
     const data = await api('/api/sync', { method: 'POST' });
-    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString() + ' (' + data.message + ')';
-    await loadFilters();
-    loadClients();
-  } catch (e) {
-    $('lastSync').textContent = 'Sync failed: ' + e.message;
-  }
+    await loadColumns();
+    await loadClients();
+    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
+    setStatus(data.message || 'Sync complete.');
+  } catch (e) { setStatus('Sync failed: ' + e.message); }
 }
 
-async function exportExcel() {
+function openSaveModal() {
+  const btn = $('overwriteBtn');
+  const hasSources = sourceFiles.length > 0;
+  btn.disabled = !hasSources;
+  $('saveTargets').textContent = hasSources
+    ? `Replaces ${sourceFiles.join(', ')} in uploads/ with the current rows.`
+    : 'No imported files to overwrite — use the download option.';
+  openModal('saveModal');
+}
+
+function closeSaveModal() { $('saveModal').classList.remove('active'); }
+
+function downloadCopy() {
+  closeSaveModal();
   window.location.href = '/api/export';
+  setStatus('Preparing download…');
 }
 
-async function saveToExcel() {
+async function overwriteFiles() {
+  closeSaveModal();
   try {
-    await api('/api/save-to-excel', { method: 'POST' });
+    const data = await api('/api/save-to-excel', { method: 'POST' });
     $('lastSync').textContent = 'Saved: ' + new Date().toLocaleTimeString();
-  } catch (e) {
-    alert('Save failed: ' + e.message);
-  }
+    setStatus(data.message || 'Saved.');
+  } catch (e) { setStatus('Save failed: ' + e.message); }
 }
+
+function exportExcel() { window.location.href = '/api/export'; }
 
 async function resetImport() {
   if (!confirm('Clear everything? All clients and uploaded files will be deleted. This cannot be undone.')) return;
   try {
     await api('/api/import/reset', { method: 'POST' });
-    await loadFilters();
-    loadClients();
+    tableColumns = [];
+    sourceFiles = [];
+    currentRows = [];
+    rowsById = new Map();
+    buildTableHeader();
+    await buildFilterBar();
+    renderRows([]);
+    $('countLabel').textContent = '0 clients';
     $('lastSync').textContent = 'Last sync: never';
-  } catch (e) {
-    alert('Failed: ' + e.message);
-  }
+    setStatus('Everything cleared.');
+  } catch (e) { setStatus('Reset failed: ' + e.message); }
 }
 
-// Init
-loadFilters();
-loadClients();
+// ── Theme ───────────────────────────────────────────────────
 
-// Theme toggle (persisted to localStorage)
-(function () {
-  const STORAGE_KEY = 'esnet-theme';
-  const themeSwitch = $('themeSwitch');
+const THEME_KEY = 'esnet-theme';
 
-  function applyTheme() {
-    document.body.classList.toggle('dark', themeSwitch.checked);
-    localStorage.setItem(STORAGE_KEY, themeSwitch.checked ? 'dark' : 'light');
+function applyTheme(dark) {
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('themeToggle').setAttribute('aria-pressed', String(dark));
+}
+
+(function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(dark);
+  $('themeToggle').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme !== 'dark';
+    localStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
+    applyTheme(next);
+  });
+})();
+
+// ── Events + init ───────────────────────────────────────────
+
+$('filterSearch').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadClients, 250);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeImportModal(); closeSaveModal(); }
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    $('filterSearch').focus();
   }
+});
 
-  const saved = localStorage.getItem(STORAGE_KEY);
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  if (saved) {
-    themeSwitch.checked = saved === 'dark';
-  } else {
-    themeSwitch.checked = prefersDark;
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
+});
+
+(async function init() {
+  try {
+    await loadColumns();
+  } catch (e) {
+    $('statusMsg').textContent = 'Could not load columns: ' + e.message;
   }
-  applyTheme();
-
-  themeSwitch.addEventListener('change', applyTheme);
+  await loadClients();
 })();
 </script>
 </body>

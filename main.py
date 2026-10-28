@@ -1,30 +1,20 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
+import json
 import shutil
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
-from database import init_db, get_session, Client
+from database import init_db, get_session, ImportMeta, ClientRow
 
 app = FastAPI(title="ES Network Client Manager")
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# No CORS needed since everything is served from same origin, but keep it simple
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Ensure DB exists
 init_db()
 
 UPLOAD_DIR = "uploads"
@@ -33,106 +23,45 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-COLUMN_ALIASES = {
-    "name": ["name", "client name", "client", "company", "company name", "full name", "contact name"],
-    "status": ["status", "active", "state", "account status", "client status"],
-    "department": ["department", "dept", "division", "team", "category", "type"],
-    "email": ["email", "e-mail", "email address", "mail", "contact email"],
-    "phone": ["phone", "telephone", "mobile", "contact number", "tel", "phone number"],
-    "notes": ["notes", "note", "remarks", "comments", "description", "memo"],
-}
+def make_json_safe(val):
+    """Convert pandas/numpy values to plain Python types for JSON."""
+    if pd.isna(val):
+        return ""
+    if hasattr(val, "item"):
+        return val.item()
+    if isinstance(val, (pd.Timestamp, datetime)):
+        return val.isoformat()
+    return str(val)
 
 
-def resolve_column(columns: List[str], aliases: List[str]) -> Optional[str]:
-    """Find the first column that fuzzy-matches any alias."""
-    cols_lower = {c.strip().lower(): c for c in columns}
-    for alias in aliases:
-        if alias.lower() in cols_lower:
-            return cols_lower[alias.lower()]
-    # partial match
-    for alias in aliases:
-        for c_lower, c_orig in cols_lower.items():
-            if alias.lower() in c_lower or c_lower in alias.lower():
-                return c_orig
-    return None
+def row_to_dict(row: ClientRow) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "source_file": row.source_file,
+        "row_index": row.row_index,
+        "data": json.loads(row.data) if row.data else {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
 
 
-def normalize_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
-    """Map Excel columns to unified schema."""
-    columns = list(df.columns)
-    mapping = {}
-    for field, aliases in COLUMN_ALIASES.items():
-        found = resolve_column(columns, aliases)
-        if found:
-            mapping[found] = field
-
-    df = df.rename(columns=mapping)
-    # Keep only known columns
-    keep = [f for f in COLUMN_ALIASES.keys() if f in df.columns]
-    df = df[keep].copy() if keep else pd.DataFrame()
-
-    for col in ["status", "department"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).replace("nan", "").str.strip()
-    # Clean other string values
-    for col in df.columns:
-        if col not in ["status", "department"] and df[col].dtype == object:
-            df[col] = df[col].astype(str).replace("nan", "").str.strip()
-
-    df["source_file"] = filename
-    return df
-
-
-def sync_dataframes(files: List[tuple]) -> dict:
-    """Merge multiple dataframes into one unified set, dedupe by name+department."""
-    dfs = []
-    for filename, df in files:
-        if df.empty:
-            continue
-        df = normalize_dataframe(df, filename)
-        dfs.append(df)
-
-    if not dfs:
-        return {"imported": 0, "message": "No valid data found."}
-
-    merged = pd.concat(dfs, ignore_index=True)
-
-    # Deduplicate: keep the most recently updated row per name+dept
-    merged["_sort_key"] = pd.to_datetime(merged.get("updated_at", datetime.now()), errors="coerce")
-    merged = merged.sort_values("_sort_key", ascending=False)
-    merged = merged.drop_duplicates(subset=["name", "department"], keep="first")
-    merged = merged.drop(columns=["_sort_key"], errors="ignore")
-
-    # Upsert to DB
-    session = get_session()
-    imported = 0
-    for _, row in merged.iterrows():
-        client = (
-            session.query(Client)
-            .filter(Client.name == row.get("name", ""))
-            .filter(Client.department == row.get("department", ""))
-            .first()
-        )
-        if client:
-            for field in ["status", "email", "phone", "notes", "source_file"]:
-                val = row.get(field)
-                if val:
-                    setattr(client, field, val)
-        else:
-            client = Client(
-                name=row.get("name", ""),
-                status=row.get("status", ""),
-                department=row.get("department", ""),
-                email=row.get("email", ""),
-                phone=row.get("phone", ""),
-                notes=row.get("notes", ""),
-                source_file=row.get("source_file", ""),
-            )
-            session.add(client)
-        imported += 1
-    session.commit()
-    session.close()
-    return {"imported": imported, "message": f"Synced {imported} clients."}
+def import_excel_file(filepath: str, filename: str) -> Dict[str, Any]:
+    """Read an Excel file and return columns + rows."""
+    df = pd.read_excel(filepath, engine="openpyxl")
+    columns = [str(c).strip() for c in df.columns]
+    rows = []
+    for idx, row in df.iterrows():
+        row_data = {str(col).strip(): make_json_safe(row[col]) for col in df.columns}
+        rows.append({
+            "row_index": int(idx),
+            "data": row_data,
+        })
+    return {
+        "source_file": filename,
+        "columns": columns,
+        "rows": rows,
+        "count": len(rows),
+    }
 
 
 # ─── Endpoints ──────────────────────────────────────────────────────────────
@@ -147,104 +76,173 @@ async def import_excel(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least 1 Excel file.")
 
-    saved = []
-    dfs = []
+    session = get_session()
+    imported_total = 0
+    meta_created = []
+
     for upload in files:
-        filename = upload.filename
+        # Untrusted client filename: keep it inside uploads/
+        filename = os.path.basename(upload.filename or "uploaded_file")
         dest = os.path.join(UPLOAD_DIR, filename)
         with open(dest, "wb") as f:
             shutil.copyfileobj(upload.file, f)
-        saved.append(dest)
 
         try:
-            df = pd.read_excel(dest, engine="openpyxl")
-            dfs.append((filename, df))
+            parsed = import_excel_file(dest, filename)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Could not read {filename}: {e}")
 
-    result = sync_dataframes(dfs)
-    return result
+        # Store/update import metadata
+        meta = session.query(ImportMeta).filter(ImportMeta.source_file == filename).first()
+        if meta:
+            meta.columns = json.dumps(parsed["columns"])
+        else:
+            meta = ImportMeta(
+                source_file=filename,
+                columns=json.dumps(parsed["columns"]),
+            )
+            session.add(meta)
+        meta_created.append(meta)
+
+        # Remove old rows for this file before re-importing
+        session.query(ClientRow).filter(ClientRow.source_file == filename).delete()
+
+        # Insert rows
+        for row in parsed["rows"]:
+            client_row = ClientRow(
+                source_file=filename,
+                row_index=row["row_index"],
+                data=json.dumps(row["data"]),
+            )
+            session.add(client_row)
+            imported_total += 1
+
+    session.commit()
+    session.close()
+    return {"imported": imported_total, "message": f"Synced {imported_total} rows."}
 
 
 @app.get("/api/clients")
 async def list_clients(
-    status: Optional[str] = Query(None),
-    department: Optional[str] = Query(None),
+    request: Request,
     search: Optional[str] = Query(None),
+    source_file: Optional[str] = Query(None),
 ):
     session = get_session()
-    q = session.query(Client)
-    if status:
-        q = q.filter(Client.status.ilike(status))
-    if department:
-        q = q.filter(Client.department.ilike(department))
-    if search:
-        q = q.filter(Client.name.ilike(f"%{search}%"))
-    clients = q.order_by(Client.name).all()
-    result = [
-        {
-            "id": c.id,
-            "name": c.name,
-            "status": c.status,
-            "department": c.department,
-            "email": c.email,
-            "phone": c.phone,
-            "notes": c.notes,
-            "source_file": c.source_file,
-        }
-        for c in clients
-    ]
+    q = session.query(ClientRow)
+    if source_file:
+        q = q.filter(ClientRow.source_file == source_file)
+    rows = q.order_by(ClientRow.row_index).all()
+
+    # Every other query param is a column filter from the UI's filter bar.
+    filters = {k: v for k, v in request.query_params.items() if k not in ("search", "source_file")}
+
+    results = []
+    for row in rows:
+        item = row_to_dict(row)
+        if search:
+            # Search across all data values
+            haystack = " ".join(str(v) for v in item["data"].values()).lower()
+            if search.lower() not in haystack:
+                continue
+        if any(str(item["data"].get(k, "")) != v for k, v in filters.items()):
+            continue
+        results.append(item)
+
     session.close()
-    return result
+    return results
+
+
+@app.get("/api/columns")
+async def get_columns(source_file: Optional[str] = Query(None)):
+    """Return column definitions for the UI."""
+    session = get_session()
+    if source_file:
+        meta = session.query(ImportMeta).filter(ImportMeta.source_file == source_file).first()
+        if meta:
+            columns = json.loads(meta.columns)
+            session.close()
+            return {"columns": columns, "source_file": source_file}
+    # Return all unique columns across all imports
+    metas = session.query(ImportMeta).all()
+    sources = [m.source_file for m in metas]
+    all_cols = []
+    seen = set()
+    for m in metas:
+        cols = json.loads(m.columns)
+        for c in cols:
+            if c not in seen:
+                all_cols.append(c)
+                seen.add(c)
+    session.close()
+    return {"columns": all_cols, "source_file": source_file, "sources": sources}
 
 
 @app.get("/api/filters")
-async def get_filters():
+async def get_filters(source_file: Optional[str] = Query(None), column: Optional[str] = Query(None)):
+    """Return unique values for a column, or all filterable columns."""
     session = get_session()
-    def unique_normalized(rows):
-        seen = {}
-        for val, in rows:
-            if not val:
-                continue
-            key = val.strip().lower()
-            if key and key not in seen:
-                seen[key] = val.strip()
-        return sorted(seen.values())
-    statuses = unique_normalized(session.query(Client.status).distinct().all())
-    departments = unique_normalized(session.query(Client.department).distinct().all())
+    q = session.query(ClientRow)
+    if source_file:
+        q = q.filter(ClientRow.source_file == source_file)
+    rows = q.all()
+
+    if column:
+        values = sorted({(json.loads(r.data) or {}).get(column, "") for r in rows if r.data})
+        values = [v for v in values if v]
+        session.close()
+        return {"column": column, "values": values}
+
+    # Auto-detect filterable columns: text columns with <= 15 unique values
+    all_data = [json.loads(r.data) or {} for r in rows]
     session.close()
-    return {"statuses": statuses, "departments": departments}
+
+    filterable = {}
+    if all_data:
+        all_keys = sorted({k for d in all_data for k in d.keys()})
+        for key in all_keys:
+            vals = {str(d.get(key, "")).strip() for d in all_data}
+            vals = {v for v in vals if v}
+            if len(vals) <= 15:
+                filterable[key] = sorted(vals)
+
+    return {"filterable": filterable}
 
 
 @app.post("/api/clients")
-async def add_client(client: dict):
+async def add_client(row: Dict[str, Any]):
     session = get_session()
-    c = Client(
-        name=client.get("name", ""),
-        status=client.get("status", ""),
-        department=client.get("department", ""),
-        email=client.get("email", ""),
-        phone=client.get("phone", ""),
-        notes=client.get("notes", ""),
+    # Determine source_file from existing metas, or first available
+    meta = session.query(ImportMeta).first()
+    source_file = row.get("source_file", meta.source_file if meta else "manual")
+    
+    data = {k: v for k, v in row.items() if k not in ("source_file",)}
+    client_row = ClientRow(
+        source_file=source_file,
+        row_index=-1,  # manually added
+        data=json.dumps(data),
     )
-    session.add(c)
+    session.add(client_row)
     session.flush()
-    client_id = c.id
+    client_id = client_row.id
     session.commit()
     session.close()
     return {"id": client_id, "message": "Client added."}
 
 
 @app.put("/api/clients/{client_id}")
-async def update_client(client_id: int, client: dict):
+async def update_client(client_id: int, row: Dict[str, Any]):
     session = get_session()
-    c = session.query(Client).filter(Client.id == client_id).first()
+    c = session.query(ClientRow).filter(ClientRow.id == client_id).first()
     if not c:
         session.close()
         raise HTTPException(status_code=404, detail="Client not found.")
-    for field in ["name", "status", "department", "email", "phone", "notes"]:
-        if field in client:
-            setattr(c, field, client[field])
+    
+    current_data = json.loads(c.data) if c.data else {}
+    for key, value in row.items():
+        if key not in ("source_file", "id"):
+            current_data[key] = value
+    c.data = json.dumps(current_data)
     session.commit()
     session.close()
     return {"message": "Client updated."}
@@ -253,7 +251,7 @@ async def update_client(client_id: int, client: dict):
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: int):
     session = get_session()
-    c = session.query(Client).filter(Client.id == client_id).first()
+    c = session.query(ClientRow).filter(ClientRow.id == client_id).first()
     if not c:
         session.close()
         raise HTTPException(status_code=404, detail="Client not found.")
@@ -265,89 +263,148 @@ async def delete_client(client_id: int):
 
 @app.post("/api/sync")
 async def re_sync():
-    """Re-import from stored uploads."""
+    """Re-read stored Excel files and rebuild database from them."""
     if not os.listdir(UPLOAD_DIR):
         return {"imported": 0, "message": "No stored files to sync."}
-    dfs = []
+
+    session = get_session()
+    imported_total = 0
+    files_to_import = []
+
     for fname in os.listdir(UPLOAD_DIR):
         fpath = os.path.join(UPLOAD_DIR, fname)
         try:
-            df = pd.read_excel(fpath, engine="openpyxl")
-            dfs.append((fname, df))
+            parsed = import_excel_file(fpath, fname)
+            files_to_import.append(parsed)
         except Exception:
             continue
-    result = sync_dataframes(dfs)
-    return result
+
+    for parsed in files_to_import:
+        # Update meta
+        meta = session.query(ImportMeta).filter(ImportMeta.source_file == parsed["source_file"]).first()
+        if meta:
+            meta.columns = json.dumps(parsed["columns"])
+        else:
+            meta = ImportMeta(
+                source_file=parsed["source_file"],
+                columns=json.dumps(parsed["columns"]),
+            )
+            session.add(meta)
+
+        # Remove old rows for this file
+        session.query(ClientRow).filter(ClientRow.source_file == parsed["source_file"]).delete()
+
+        # Re-insert rows
+        for row in parsed["rows"]:
+            client_row = ClientRow(
+                source_file=parsed["source_file"],
+                row_index=row["row_index"],
+                data=json.dumps(row["data"]),
+            )
+            session.add(client_row)
+            imported_total += 1
+
+    session.commit()
+    session.close()
+    return {"imported": imported_total, "message": f"Synced {imported_total} rows."}
 
 
 @app.post("/api/import/reset")
 async def reset_import():
-    """Clear database and uploaded files. Full reset for fresh import."""
+    """Clear database and uploaded files. Full reset for a fresh import."""
     session = get_session()
-    session.query(Client).delete()
+    session.query(ClientRow).delete()
+    session.query(ImportMeta).delete()
     session.commit()
     session.close()
     for fname in os.listdir(UPLOAD_DIR):
         os.remove(os.path.join(UPLOAD_DIR, fname))
-    return {"message": "Database cleared. Ready for fresh import."}
-
-
-@app.get("/api/export")
-async def export_excel():
-    session = get_session()
-    clients = session.query(Client).all()
-    session.close()
-    data = [
-        {
-            "Name": c.name,
-            "Status": c.status,
-            "Department": c.department,
-            "Email": c.email,
-            "Phone": c.phone,
-            "Notes": c.notes,
-        }
-        for c in clients
-    ]
-    df = pd.DataFrame(data)
-    export_path = "export.xlsx"
-    df.to_excel(export_path, index=False, engine="openpyxl")
-    return FileResponse(export_path, filename="es_network_clients.xlsx")
+    return {"message": "Database cleared. Ready for a fresh import."}
 
 
 @app.post("/api/save-to-excel")
 async def save_to_excel():
-    """Write current database back to all stored Excel files."""
+    """Write current database back to the stored Excel files, preserving original structure."""
     session = get_session()
-    clients = session.query(Client).all()
+    all_rows = session.query(ClientRow).all()
     session.close()
-    if not clients:
+
+    if not all_rows:
         raise HTTPException(status_code=400, detail="No data to save.")
 
-    data = [
-        {
-            "Name": c.name,
-            "Status": c.status,
-            "Department": c.department,
-            "Email": c.email,
-            "Phone": c.phone,
-            "Notes": c.notes,
-        }
-        for c in clients
-    ]
-    df = pd.DataFrame(data)
-
-    if not os.listdir(UPLOAD_DIR):
-        # No stored files; save to a new file in uploads
-        dest = os.path.join(UPLOAD_DIR, "es_network_export.xlsx")
-        df.to_excel(dest, index=False, engine="openpyxl")
-        return {"message": f"Saved to {dest}"}
+    # Group rows by source_file
+    by_file: Dict[str, List[ClientRow]] = {}
+    for row in all_rows:
+        by_file.setdefault(row.source_file, []).append(row)
 
     saved = []
-    for fname in os.listdir(UPLOAD_DIR):
+    for fname, rows in by_file.items():
         fpath = os.path.join(UPLOAD_DIR, fname)
-        try:
-            df.to_excel(fpath, index=False, engine="openpyxl")
-            saved.append(fname)
-        except Exception as e:
+        if not os.path.exists(fpath):
             continue
-    return {"message": f"Saved to {len(saved)} file(s): {', '.join(saved)}"}
+
+        try:
+            # Read original Excel to preserve structure
+            df = pd.read_excel(fpath, engine="openpyxl")
+            columns = [str(c).strip() for c in df.columns]
+
+            # Build new data for this file
+            # Separate imported rows (row_index >= 0) from manual rows (row_index = -1)
+            imported_rows = [r for r in rows if r.row_index is not None and r.row_index >= 0]
+            manual_rows = [r for r in rows if r.row_index is None or r.row_index < 0]
+
+            # Sort imported rows by original index
+            imported_rows.sort(key=lambda r: r.row_index)
+
+            # Create DataFrame preserving original columns
+            data_dict: Dict[str, List[Any]] = {col: [] for col in columns}
+
+            # Rebuild imported rows in original order
+            for orig_row in imported_rows:
+                row_data = json.loads(orig_row.data) if orig_row.data else {}
+                for col in columns:
+                    val = row_data.get(col, "")
+                    data_dict[col].append(val)
+
+            # Append manual rows
+            for mrow in manual_rows:
+                row_data = json.loads(mrow.data) if mrow.data else {}
+                for col in columns:
+                    val = row_data.get(col, "")
+                    data_dict[col].append(val)
+
+            new_df = pd.DataFrame(data_dict)
+            new_df.to_excel(fpath, index=False, engine="openpyxl")
+            saved.append(fname)
+        except Exception:
+            continue
+
+    if saved:
+        return {"message": f"Saved to {len(saved)} file(s): {', '.join(saved)}"}
+    else:
+        return {"message": "No files saved. Make sure files are still in uploads."}
+
+
+@app.get("/api/export")
+async def export_excel():
+    """Download current database as a fresh Excel file."""
+    session = get_session()
+    rows = session.query(ClientRow).all()
+    session.close()
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="No data to export.")
+
+    # Get all unique columns across all rows
+    all_data = [json.loads(r.data) or {} for r in rows]
+    all_keys = sorted({k for d in all_data for k in d.keys()})
+
+    data = []
+    for r in rows:
+        row_data = json.loads(r.data) or {}
+        data.append({k: row_data.get(k, "") for k in all_keys})
+
+    df = pd.DataFrame(data)
+    export_path = "export.xlsx"
+    df.to_excel(export_path, index=False, engine="openpyxl")
+    return FileResponse(export_path, filename="es_network_export.xlsx")
