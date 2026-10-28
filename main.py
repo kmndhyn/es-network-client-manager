@@ -261,54 +261,6 @@ async def delete_client(client_id: int):
     return {"message": "Client deleted."}
 
 
-@app.post("/api/sync")
-async def re_sync():
-    """Re-read stored Excel files and rebuild database from them."""
-    if not os.listdir(UPLOAD_DIR):
-        return {"imported": 0, "message": "No stored files to sync."}
-
-    session = get_session()
-    imported_total = 0
-    files_to_import = []
-
-    for fname in os.listdir(UPLOAD_DIR):
-        fpath = os.path.join(UPLOAD_DIR, fname)
-        try:
-            parsed = import_excel_file(fpath, fname)
-            files_to_import.append(parsed)
-        except Exception:
-            continue
-
-    for parsed in files_to_import:
-        # Update meta
-        meta = session.query(ImportMeta).filter(ImportMeta.source_file == parsed["source_file"]).first()
-        if meta:
-            meta.columns = json.dumps(parsed["columns"])
-        else:
-            meta = ImportMeta(
-                source_file=parsed["source_file"],
-                columns=json.dumps(parsed["columns"]),
-            )
-            session.add(meta)
-
-        # Remove old rows for this file
-        session.query(ClientRow).filter(ClientRow.source_file == parsed["source_file"]).delete()
-
-        # Re-insert rows
-        for row in parsed["rows"]:
-            client_row = ClientRow(
-                source_file=parsed["source_file"],
-                row_index=row["row_index"],
-                data=json.dumps(row["data"]),
-            )
-            session.add(client_row)
-            imported_total += 1
-
-    session.commit()
-    session.close()
-    return {"imported": imported_total, "message": f"Synced {imported_total} rows."}
-
-
 @app.post("/api/import/reset")
 async def reset_import():
     """Clear database and uploaded files. Full reset for a fresh import."""

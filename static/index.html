@@ -382,7 +382,6 @@
       <button onclick="triggerImport()">Import</button>
       <button class="ghost" id="copyBtn" onclick="copyEmails()" hidden>Copy emails</button>
       <span class="sep" aria-hidden="true"></span>
-      <button class="ghost" onclick="triggerSync()">Sync</button>
       <button class="ghost" onclick="openSaveModal()">Save to file</button>
       <button class="ghost" onclick="exportExcel()">Export</button>
       <button class="ghost danger" onclick="resetImport()">Reset</button>
@@ -391,7 +390,7 @@
     <div class="status-line">
       <span class="count" id="countLabel">Loading…</span>
       <span class="msg" id="statusMsg"></span>
-      <span id="lastSync">Last sync: never</span>
+      <span id="lastSync">Last import: never</span>
     </div>
   </div>
 
@@ -751,7 +750,7 @@ async function deleteClient(id) {
   } catch (e) { setStatus('Delete failed: ' + e.message); }
 }
 
-// ── Import / sync / export ──────────────────────────────────
+// ── Import / save / export ──────────────────────────────────
 
 function triggerImport() { $('importStatus').textContent = ''; openModal('importModal'); }
 
@@ -770,22 +769,11 @@ async function submitImport() {
     closeImportModal();
     await loadColumns();
     await loadClients();
-    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
+    $('lastSync').textContent = 'Last import: ' + new Date().toLocaleTimeString();
     setStatus(data.message || 'Import complete.');
   } catch (e) {
     $('importStatus').textContent = 'Error: ' + e.message;
   }
-}
-
-async function triggerSync() {
-  $('statusMsg').textContent = 'Syncing…';
-  try {
-    const data = await api('/api/sync', { method: 'POST' });
-    await loadColumns();
-    await loadClients();
-    $('lastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
-    setStatus(data.message || 'Sync complete.');
-  } catch (e) { setStatus('Sync failed: ' + e.message); }
 }
 
 function openSaveModal() {
@@ -829,7 +817,7 @@ async function resetImport() {
     await buildFilterBar();
     renderRows([]);
     $('countLabel').textContent = '0 clients';
-    $('lastSync').textContent = 'Last sync: never';
+    $('lastSync').textContent = 'Last import: never';
     setStatus('Everything cleared.');
   } catch (e) { setStatus('Reset failed: ' + e.message); }
 }

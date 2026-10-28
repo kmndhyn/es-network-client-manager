@@ -46,11 +46,9 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 5. **Save to file** — asks which you want:
    - **Download a new sheet** — writes a fresh .xlsx from the database, never touches your files.
    - **Overwrite the imported file** — replaces the workbook in `uploads/` with the current rows.
-6. **Sync** — rebuilds the database from the files in `uploads/`. Rows added by hand since the
-   last import are discarded; download a copy first if you want to keep them.
-7. **Export** — downloads the current database as Excel (same as "Download a new sheet").
-8. **Reset** — wipes the database and the files in `uploads/`.
-9. **Dark mode** — toggle in the top-right; the choice is remembered.
+6. **Export** — downloads the current database as Excel (same as "Download a new sheet").
+7. **Reset** — wipes the database and the files in `uploads/`.
+8. **Dark mode** — toggle in the top-right; the choice is remembered.
 
 ## File Layout
 
@@ -58,4 +56,4 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 - `database.py` — SQLite schema
 - `static/index.html` — Frontend
 - `es_network.db` — Your local database (created on first import)
-- `uploads/` — Stored Excel files for re-sync
+- `uploads/` — Stored Excel files for import/save
