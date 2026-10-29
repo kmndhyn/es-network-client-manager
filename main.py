@@ -9,15 +9,15 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from database import init_db, get_session, ImportMeta, ClientRow
+from paths import STATIC_DIR, UPLOAD_DIR, DATA_DIR
 
 app = FastAPI(title="ES Network Client Manager")
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 init_db()
 
-UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -68,7 +68,7 @@ def import_excel_file(filepath: str, filename: str) -> Dict[str, Any]:
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse("static/index.html")
+    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @app.post("/api/import")
@@ -357,6 +357,6 @@ async def export_excel():
         data.append({k: row_data.get(k, "") for k in all_keys})
 
     df = pd.DataFrame(data)
-    export_path = "export.xlsx"
+    export_path = DATA_DIR / "export.xlsx"
     df.to_excel(export_path, index=False, engine="openpyxl")
-    return FileResponse(export_path, filename="es_network_export.xlsx")
+    return FileResponse(str(export_path), filename="es_network_export.xlsx")

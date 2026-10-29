@@ -54,6 +54,7 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 - `main.py` — FastAPI backend
 - `database.py` — SQLite schema
+- `paths.py` — asset/data locations (source vs. frozen build)
 - `static/index.html` — Frontend
 - `launcher.py` — Server launcher (opens browser automatically)
 - `es_network.db` — Your local database (created on first import)
@@ -61,11 +62,26 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 ## Build Windows EXE (no Python needed on target machines)
 
-On a Windows PC with Python installed:
+On a Windows PC with Python **3.11+** installed:
 
 1. Open Command Prompt in this folder
 2. Run `build_exe.bat`
-3. When finished, zip the `dist\ES Client Manager` folder
-4. Distribute that zip — users just extract and double-click `ES Client Manager.exe`
+3. Outputs land in `dist\`:
+   - `ES Client Manager.exe` — single self-contained file (easiest to share)
+   - `ES Client Manager\` — folder build with faster startup (zip the whole folder if you prefer this one)
+4. Copy either build to the work laptops — no Python or packages required
 
-The EXE includes everything needed: server, frontend, and browser launcher.
+The app opens in its own desktop window (Edge WebView2, present on Windows 10/11
+with Edge). It does not open a browser tab. If WebView2 is unavailable it falls
+back to the default browser automatically.
+
+Notes:
+
+- `es_network.db`, `uploads\`, `export.xlsx` and `server.log` are created **next to
+  the .exe**, so put the exe in a folder the user can write to (e.g. Documents,
+  not `C:\Program Files`).
+- Windows SmartScreen may warn about an unsigned app: **More info → Run anyway**.
+- If it ever fails to start, `startup-error.log` and `server.log` sit next to the
+  exe and contain the reason.
+- Excel exports are downloaded via the WebView2 download prompt (usually to
+  `Downloads`).
