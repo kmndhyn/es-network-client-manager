@@ -55,5 +55,17 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 - `main.py` — FastAPI backend
 - `database.py` — SQLite schema
 - `static/index.html` — Frontend
+- `launcher.py` — Server launcher (opens browser automatically)
 - `es_network.db` — Your local database (created on first import)
 - `uploads/` — Stored Excel files for import/save
+
+## Build Windows EXE (no Python needed on target machines)
+
+On a Windows PC with Python installed:
+
+1. Open Command Prompt in this folder
+2. Run `build_exe.bat`
+3. When finished, zip the `dist\ES Client Manager` folder
+4. Distribute that zip — users just extract and double-click `ES Client Manager.exe`
+
+The EXE includes everything needed: server, frontend, and browser launcher.

@@ -19,5 +19,5 @@ echo ""
 echo "Keep this window open while you use it. Press Ctrl+C to stop."
 echo ""
 
-uvicorn main:app --host 127.0.0.1 --port $PORT
+python3 launcher.py
 read -p "Press Enter to close..."
