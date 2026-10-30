@@ -5,11 +5,8 @@ machine — no cloud, no telemetry, no external calls.
 
 ## Quick Start
 
-### Mac
-Double-click `run.command`, then open http://127.0.0.1:8000
-
-### Windows
-Double-click `run.bat`, then open http://127.0.0.1:8000
+Double-click **`launch.command`** (Mac) or **`launch.bat`** (Windows).  
+It creates a local virtual environment, installs dependencies on first run, and opens http://127.0.0.1:8000 automatically.
 
 ### Manual
 ```bash
@@ -24,8 +21,10 @@ The server binds `127.0.0.1` only, so nothing is exposed on your LAN or the
 public internet. To reach it from your phone or another computer, publish it on
 your Tailscale tailnet:
 
+`launch.command` already does this automatically when Tailscale is installed.
+
 ```bash
-tailscale serve --bg 8000     # Mac; run.command does this automatically when installed
+tailscale serve --bg 8000
 ```
 
 Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
@@ -57,3 +56,15 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 - `static/index.html` — Frontend
 - `es_network.db` — Your local database (created on first import)
 - `uploads/` — Stored Excel files for import/save
+
+## Build standalone EXE (no Python needed on target machine)
+
+On a Windows machine with Python + PyInstaller:
+
+1. `pip install pyinstaller`
+2. Double-click **`build.bat`**
+3. Find `dist\ES-Client-Manager.exe`
+
+Copy the exe + the `static` folder to the target machine. No Python, no venv, no internet required.
+
+`main.py` must be in the same folder as `static/` and `database.py` when building.
