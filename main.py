@@ -23,39 +23,82 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-def make_json_safe(val):
-    """Convert pandas/numpy values to plain Python types for JSON."""
+NULLISH = {
+    "", "nan", "none", "null", "nil", "n/a", "na", "-", "--", "---",
+    "unknown", "unnamed", "undefined", "missing", "#n/a", "#na", "#null",
+    "#ref!", "#value!", "#div/0!", "#name?", "no data", "not available",
+    "—", "–", "•", "·",
+}
+
+def _clean_value(val):
+    """Normalize pandas/numpy values and common null-placeholder strings to empty string."""
     if pd.isna(val):
         return ""
     if hasattr(val, "item"):
-        return val.item()
+        val = val.item()
+    if isinstance(val, str):
+        stripped = val.strip()
+        if stripped.lower() in NULLISH:
+            return ""
+        return stripped
     if isinstance(val, (pd.Timestamp, datetime)):
         return val.isoformat()
     return str(val)
 
+# Backward-compat alias
+make_json_safe = _clean_value
 
-def row_to_dict(row: ClientRow) -> Dict[str, Any]:
-    return {
-        "id": row.id,
-        "source_file": row.source_file,
-        "row_index": row.row_index,
-        "data": json.loads(row.data) if row.data else {},
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-    }
+
+def _looks_like_header(row_values) -> bool:
+    """Heuristic: does this row look like column headers rather than data?"""
+    non_null = [str(v).strip() for v in row_values if pd.notna(v) and str(v).strip()]
+    if not non_null:
+        return False
+    data_like = 0
+    for v in non_null:
+        v_lower = v.lower()
+        # Emails, URLs, long text, pure numbers, dates → data
+        if (
+            "@" in v
+            or "http" in v_lower
+            or len(v) > 40
+            or v.replace(",", "").replace(".", "").replace("-", "").replace("/", "").isdigit()
+        ):
+            data_like += 1
+    # If >30% look like actual data, treat as data row, not header
+    return (data_like / len(non_null)) < 0.3
 
 
 def import_excel_file(filepath: str, filename: str) -> Dict[str, Any]:
-    """Read an Excel file and return columns + rows."""
-    df = pd.read_excel(filepath, engine="openpyxl")
-    columns = [str(c).strip() for c in df.columns]
+    """Read an Excel file and return columns + rows, auto-detecting headers."""
+    # Read raw to inspect first row
+    df_raw = pd.read_excel(filepath, engine="openpyxl", header=None)
+
+    if len(df_raw) == 0:
+        return {"source_file": filename, "columns": [], "rows": [], "count": 0}
+
+    if _looks_like_header(df_raw.iloc[0]):
+        df = pd.read_excel(filepath, engine="openpyxl")
+        columns = [str(c).strip() for c in df.columns]
+        # Clean pandas-generated "Unnamed: X" names
+        columns = [
+            c if not c.lower().startswith("unnamed:") else f"Column {i + 1}"
+            for i, c in enumerate(columns)
+        ]
+        df.columns = columns
+    else:
+        df = df_raw
+        columns = [f"Column {i + 1}" for i in range(len(df.columns))]
+        df.columns = columns
+
     rows = []
     for idx, row in df.iterrows():
-        row_data = {str(col).strip(): make_json_safe(row[col]) for col in df.columns}
+        row_data = {col: _clean_value(row[col]) for col in columns}
         rows.append({
             "row_index": int(idx),
             "data": row_data,
         })
+
     return {
         "source_file": filename,
         "columns": columns,
