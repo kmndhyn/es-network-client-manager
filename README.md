@@ -35,16 +35,22 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 ## How to Use
 
-1. **Import** — click "Import" and choose 1 or more Excel files (.xlsx/.xls). First sheet only,
-   columns auto-detected. Re-importing the same filename replaces that file's rows.
-2. **Filter** — dropdowns are built from any column with 15 or fewer distinct values, plus the
-   search box which matches every field. Press `/` to jump to search.
+1. **Import** — click "Import" and choose 1 or more Excel files (.xlsx/.xls). Every sheet
+   is imported as its own table; pick one from the sheet dropdown above the table. The real
+   header row is found automatically (title rows above it are skipped), and re-importing the
+   same filename replaces all of that file's sheets.
+2. **Filter** — dropdowns are built from columns with 2–15 repeated values that are mostly
+   filled; numbered or blank columns are skipped. The search box matches every field.
+   Press `/` to jump to search.
 3. **Add/Edit/Delete** — "Add client", or the pencil/trash icons on a row.
 4. **Copy emails** — copies valid addresses from the rows currently shown, one per line,
    deduplicated. Placeholders like `UNKNOWN` are skipped.
 5. **Save to file** — asks which you want:
-   - **Download a new sheet** — writes a fresh .xlsx from the database, never touches your files.
-   - **Overwrite the imported file** — replaces the workbook in `uploads/` with the current rows.
+   - **Download a new sheet** — writes a fresh .xlsx from the database, one tab per imported
+     sheet. Never touches your files.
+   - **Overwrite the imported file** — rebuilds every imported sheet in the workbook in
+     `uploads/` from the current rows. Other sheets are left alone, but formatting, formulas
+     and title rows above the header are lost.
 6. **Export** — downloads the current database as Excel (same as "Download a new sheet").
 7. **Reset** — wipes the database and the files in `uploads/`.
 8. **Dark mode** — toggle in the top-right; the choice is remembered.
@@ -61,12 +67,18 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 ## Build standalone EXE (no Python needed on target machine)
 
-On a Windows machine with Python + PyInstaller:
+GitHub holds source only — `build/`, `dist/` and your data files are never committed.
+Build on a Windows machine with Python 3.11+:
 
-1. `pip install pyinstaller`
-2. Double-click **`build.bat`**
-3. Find `dist\ES-Client-Manager.exe`
+1. Open the project folder in Command Prompt.
+2. Double-click **`build_exe.bat`** (installs dependencies, then builds both flavours).
+3. Distribute either:
+   - `dist\ES Client Manager.exe` — one file, nothing else needed (slower first launch), or
+   - `dist\ES Client Manager\` — folder version, faster start; zip the whole folder.
 
-Copy the exe + the `static` folder to the target machine. No Python, no venv, no internet required.
+The EXE contains only code and `static/`. It never includes `uploads/`, `es_network.db`
+or any workbook. Those live next to the EXE and are created on first import, so replacing
+the EXE keeps the existing data.
 
-`main.py` must be in the same folder as `static/` and `database.py` when building.
+If an old checkout still has `build.bat`, delete it — it built `main.py`, which has no
+launcher and produces an EXE that opens nothing.

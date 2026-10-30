@@ -2,11 +2,15 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
+import openpyxl
 import os
 import json
+import re
 import shutil
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+
+from sqlalchemy import or_
 
 from database import init_db, get_session, ImportMeta, ClientRow
 from paths import STATIC_DIR, UPLOAD_DIR, DATA_DIR
@@ -30,80 +34,193 @@ NULLISH = {
     "—", "–", "•", "·",
 }
 
+
 def _clean_value(val):
     """Normalize pandas/numpy values and common null-placeholder strings to empty string."""
-    if pd.isna(val):
+    if val is None:
         return ""
-    if hasattr(val, "item"):
-        val = val.item()
-    if isinstance(val, str):
-        stripped = val.strip()
-        if stripped.lower() in NULLISH:
+    try:
+        if pd.isna(val):
             return ""
-        return stripped
+    except (TypeError, ValueError):
+        pass  # list-like values
+    if hasattr(val, "item") and not isinstance(val, (str, bytes)):
+        val = val.item()
+    if isinstance(val, (int, float, bool)):
+        return val
     if isinstance(val, (pd.Timestamp, datetime)):
         return val.isoformat()
+    if isinstance(val, str):
+        stripped = val.strip()
+        return "" if stripped.lower() in NULLISH else stripped
     return str(val)
 
-# Backward-compat alias
-make_json_safe = _clean_value
+
+def unique_columns(raw_columns) -> List[str]:
+    """Every column survives: blanks get a name, repeats get a suffix."""
+    names, used = [], set()
+    for i, c in enumerate(raw_columns, start=1):
+        name = str(c).strip()
+        if not name or name.lower().startswith("unnamed:"):
+            name = f"Column {i}"
+        candidate, n = name, 1
+        while candidate in used:
+            n += 1
+            candidate = f"{name} ({n})"
+        used.add(candidate)
+        names.append(candidate)
+    return names
 
 
-def _looks_like_header(row_values) -> bool:
-    """Heuristic: does this row look like column headers rather than data?"""
-    non_null = [str(v).strip() for v in row_values if pd.notna(v) and str(v).strip()]
-    if not non_null:
+def _is_blank(val) -> bool:
+    if val is None:
+        return True
+    try:
+        if pd.isna(val):
+            return True
+    except (TypeError, ValueError):
         return False
-    data_like = 0
-    for v in non_null:
-        v_lower = v.lower()
-        # Emails, URLs, long text, pure numbers, dates → data
-        if (
-            "@" in v
-            or "http" in v_lower
-            or len(v) > 40
-            or v.replace(",", "").replace(".", "").replace("-", "").replace("/", "").isdigit()
-        ):
-            data_like += 1
-    # If >30% look like actual data, treat as data row, not header
-    return (data_like / len(non_null)) < 0.3
+    return str(val).strip() == ""
 
 
-def import_excel_file(filepath: str, filename: str) -> Dict[str, Any]:
-    """Read an Excel file and return columns + rows, auto-detecting headers."""
-    # Read raw to inspect first row
-    df_raw = pd.read_excel(filepath, engine="openpyxl", header=None)
+def _looks_like_data(val) -> bool:
+    """Emails, links, numbers, dates and long text are data, not header labels."""
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, (int, float, datetime, pd.Timestamp)):
+        return True
+    text = str(val).strip()
+    if "@" in text or text.lower().startswith(("http://", "https://", "www.")):
+        return True
+    if len(text) > 60:
+        return True
+    return bool(re.fullmatch(r"[\d\s,./:+-]+", text)) and any(ch.isdigit() for ch in text)
 
-    if len(df_raw) == 0:
-        return {"source_file": filename, "columns": [], "rows": [], "count": 0}
 
-    if _looks_like_header(df_raw.iloc[0]):
-        df = pd.read_excel(filepath, engine="openpyxl")
-        columns = [str(c).strip() for c in df.columns]
-        # Clean pandas-generated "Unnamed: X" names
-        columns = [
-            c if not c.lower().startswith("unnamed:") else f"Column {i + 1}"
-            for i, c in enumerate(columns)
+def _choose_header(df: pd.DataFrame, limit: int = 20) -> int:
+    """Return the row index holding the real column names, or -1 when there is none.
+
+    Scans the top of the sheet so a title/notes row above the table (the usual
+    source of "Unnamed: 0") is skipped instead of becoming the header.
+    """
+    best, best_score = -1, 0
+    for i in range(min(limit, len(df))):
+        values = [v for v in df.iloc[i] if not _is_blank(v)]
+        if len(values) < 2 or any(_looks_like_data(v) for v in values):
+            continue
+        if i + 1 < len(df) and all(_is_blank(v) for v in df.iloc[i + 1]):
+            continue
+        if len(values) > best_score:
+            best, best_score = i, len(values)
+    return best
+
+
+def _header_names(df: pd.DataFrame, header_pos: int, ws, width: int) -> List[str]:
+    """Header labels for one row, with merged ranges spread across their span."""
+    if ws is not None:
+        excel_row = header_pos + 1
+        anchors = {}
+        for rng in ws.merged_cells.ranges:
+            if rng.min_row <= excel_row <= rng.max_row:
+                anchor = _clean_value(ws.cell(row=rng.min_row, column=rng.min_col).value)
+                if anchor != "":
+                    for col in range(rng.min_col, rng.max_col + 1):
+                        anchors[col] = anchor
+        raw = [
+            anchors.get(i + 1, _clean_value(ws.cell(row=excel_row, column=i + 1).value))
+            for i in range(width)
         ]
-        df.columns = columns
     else:
-        df = df_raw
-        columns = [f"Column {i + 1}" for i in range(len(df.columns))]
-        df.columns = columns
+        raw = [_clean_value(v) for v in df.iloc[header_pos]]
+        raw = (raw + [""] * width)[:width]
+    return unique_columns(raw)
 
-    rows = []
-    for idx, row in df.iterrows():
-        row_data = {col: _clean_value(row[col]) for col in columns}
-        rows.append({
-            "row_index": int(idx),
-            "data": row_data,
+
+def import_excel_book(filepath: str) -> List[Dict[str, Any]]:
+    """Read every sheet in a workbook, using each sheet's real header row."""
+    book = pd.read_excel(filepath, sheet_name=None, header=None)
+    try:
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+    except Exception:
+        wb = None  # legacy .xls: header detection still works, merged labels are lost
+
+    sheets = []
+    for sheet_name, df in book.items():
+        width = df.shape[1]
+        if width == 0:
+            continue  # genuinely empty sheet
+
+        header_pos = _choose_header(df)
+        ws = wb[sheet_name] if wb is not None else None
+        if header_pos >= 0:
+            columns = _header_names(df, header_pos, ws, width)
+            body = df.iloc[header_pos + 1:]
+        else:
+            columns = [f"Column {i}" for i in range(1, width + 1)]
+            body = df
+
+        body = body.dropna(how="all")  # blank spacer rows carry no data
+        rows = [
+            {
+                "row_index": int(idx),
+                "data": {name: _clean_value(v) for name, v in zip(columns, values)},
+            }
+            for idx, values in zip(body.index, body.itertuples(index=False, name=None))
+        ]
+        sheets.append({
+            "sheet": str(sheet_name),
+            "columns": columns,
+            "rows": rows,
+            "header_row": header_pos + 1 if header_pos >= 0 else None,
         })
 
+    if wb is not None:
+        wb.close()
+    return sheets
+
+
+FILTER_LIMIT = 15
+NUMBERED_COLUMN = re.compile(r"^(unnamed:\s*\d+|column\s+\d+)$", re.I)
+
+
+def filterable_columns(all_data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Columns worth a dropdown: a handful of values, mostly filled, not a numbered placeholder."""
+    filterable = {}
+    total = len(all_data)
+    if not total:
+        return filterable
+
+    for key in sorted({k for d in all_data for k in d}):
+        if NUMBERED_COLUMN.match(str(key)):
+            continue
+        values = {str(d.get(key, "")).strip() for d in all_data}
+        values.discard("")
+        filled = sum(1 for d in all_data if str(d.get(key, "")).strip())
+        if 2 <= len(values) <= FILTER_LIMIT and filled * 2 >= total:
+            filterable[key] = sorted(values)
+    return filterable
+
+
+def rows_to_df(rows: List[ClientRow], columns: List[str]) -> pd.DataFrame:
+    """Rebuild a sheet from stored rows: original order, manual rows last."""
+    columns = list(columns)
+    rows = sorted(rows, key=lambda r: (r.row_index if r.row_index is not None and r.row_index >= 0 else 10**9, r.id))
+    parsed = [json.loads(r.data) if r.data else {} for r in rows]
+    for d in parsed:
+        for k in d:
+            if k not in columns:
+                columns.append(k)
+    return pd.DataFrame({c: [d.get(c, "") for d in parsed] for c in columns})
+
+
+def row_to_dict(row: ClientRow) -> Dict[str, Any]:
     return {
-        "source_file": filename,
-        "columns": columns,
-        "rows": rows,
-        "count": len(rows),
+        "id": row.id,
+        "source_file": row.source_file,
+        "row_index": row.row_index,
+        "data": json.loads(row.data) if row.data else {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
 
@@ -121,48 +238,58 @@ async def import_excel(files: List[UploadFile] = File(...)):
 
     session = get_session()
     imported_total = 0
-    meta_created = []
+    sheet_total = 0
+    no_header = []
 
-    for upload in files:
-        # Untrusted client filename: keep it inside uploads/
-        filename = os.path.basename(upload.filename or "uploaded_file")
-        dest = os.path.join(UPLOAD_DIR, filename)
-        with open(dest, "wb") as f:
-            shutil.copyfileobj(upload.file, f)
+    try:
+        for upload in files:
+            # Untrusted client filename: keep it inside uploads/
+            filename = os.path.basename(upload.filename or "uploaded_file")
+            dest = os.path.join(UPLOAD_DIR, filename)
+            with open(dest, "wb") as f:
+                shutil.copyfileobj(upload.file, f)
 
-        try:
-            parsed = import_excel_file(dest, filename)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not read {filename}: {e}")
+            try:
+                sheets = import_excel_book(dest)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not read {filename}: {e}")
 
-        # Store/update import metadata
-        meta = session.query(ImportMeta).filter(ImportMeta.source_file == filename).first()
-        if meta:
-            meta.columns = json.dumps(parsed["columns"])
-        else:
-            meta = ImportMeta(
-                source_file=filename,
-                columns=json.dumps(parsed["columns"]),
-            )
-            session.add(meta)
-        meta_created.append(meta)
+            if not sheets:
+                raise HTTPException(status_code=400, detail=f"{filename} has no data in any sheet.")
 
-        # Remove old rows for this file before re-importing
-        session.query(ClientRow).filter(ClientRow.source_file == filename).delete()
+            # Re-importing a workbook replaces every sheet it had, including
+            # rows from older versions that stored only the bare filename.
+            prefix = filename + "::"
+            for model in (ClientRow, ImportMeta):
+                session.query(model).filter(
+                    or_(
+                        model.source_file == filename,
+                        model.source_file.startswith(prefix, autoescape=True),
+                    )
+                ).delete(synchronize_session=False)
 
-        # Insert rows
-        for row in parsed["rows"]:
-            client_row = ClientRow(
-                source_file=filename,
-                row_index=row["row_index"],
-                data=json.dumps(row["data"]),
-            )
-            session.add(client_row)
-            imported_total += 1
+            for sheet in sheets:
+                key = f"{filename}::{sheet['sheet']}"
+                session.add(ImportMeta(source_file=key, columns=json.dumps(sheet["columns"])))
+                if sheet["header_row"] is None:
+                    no_header.append(f"{filename} › {sheet['sheet']}")
+                for row in sheet["rows"]:
+                    session.add(ClientRow(
+                        source_file=key,
+                        row_index=row["row_index"],
+                        data=json.dumps(row["data"]),
+                    ))
+                    imported_total += 1
+                sheet_total += 1
 
-    session.commit()
-    session.close()
-    return {"imported": imported_total, "message": f"Synced {imported_total} rows."}
+        session.commit()
+    finally:
+        session.close()
+
+    message = f"Imported {imported_total} rows from {sheet_total} sheet(s) in {len(files)} file(s)."
+    if no_header:
+        message += " No header row found in: " + ", ".join(no_header) + " — columns are numbered."
+    return {"imported": imported_total, "message": message}
 
 
 @app.get("/api/clients")
@@ -200,20 +327,21 @@ async def list_clients(
 async def get_columns(source_file: Optional[str] = Query(None)):
     """Return column definitions for the UI."""
     session = get_session()
+    metas = session.query(ImportMeta).order_by(ImportMeta.id).all()
+    sources = [m.source_file for m in metas]
+
     if source_file:
-        meta = session.query(ImportMeta).filter(ImportMeta.source_file == source_file).first()
+        meta = next((m for m in metas if m.source_file == source_file), None)
         if meta:
             columns = json.loads(meta.columns)
             session.close()
-            return {"columns": columns, "source_file": source_file}
+            return {"columns": columns, "source_file": source_file, "sources": sources}
+
     # Return all unique columns across all imports
-    metas = session.query(ImportMeta).all()
-    sources = [m.source_file for m in metas]
     all_cols = []
     seen = set()
     for m in metas:
-        cols = json.loads(m.columns)
-        for c in cols:
+        for c in json.loads(m.columns):
             if c not in seen:
                 all_cols.append(c)
                 seen.add(c)
@@ -222,34 +350,15 @@ async def get_columns(source_file: Optional[str] = Query(None)):
 
 
 @app.get("/api/filters")
-async def get_filters(source_file: Optional[str] = Query(None), column: Optional[str] = Query(None)):
-    """Return unique values for a column, or all filterable columns."""
+async def get_filters(source_file: Optional[str] = Query(None)):
+    """Return the columns worth showing as filter dropdowns."""
     session = get_session()
     q = session.query(ClientRow)
     if source_file:
         q = q.filter(ClientRow.source_file == source_file)
-    rows = q.all()
-
-    if column:
-        values = sorted({(json.loads(r.data) or {}).get(column, "") for r in rows if r.data})
-        values = [v for v in values if v]
-        session.close()
-        return {"column": column, "values": values}
-
-    # Auto-detect filterable columns: text columns with <= 15 unique values
-    all_data = [json.loads(r.data) or {} for r in rows]
+    all_data = [json.loads(r.data) or {} for r in q.all()]
     session.close()
-
-    filterable = {}
-    if all_data:
-        all_keys = sorted({k for d in all_data for k in d.keys()})
-        for key in all_keys:
-            vals = {str(d.get(key, "")).strip() for d in all_data}
-            vals = {v for v in vals if v}
-            if len(vals) <= 15:
-                filterable[key] = sorted(vals)
-
-    return {"filterable": filterable}
+    return {"filterable": filterable_columns(all_data)}
 
 
 @app.post("/api/clients")
@@ -257,8 +366,8 @@ async def add_client(row: Dict[str, Any]):
     session = get_session()
     # Determine source_file from existing metas, or first available
     meta = session.query(ImportMeta).first()
-    source_file = row.get("source_file", meta.source_file if meta else "manual")
-    
+    source_file = row.get("source_file") or (meta.source_file if meta else "manual")
+
     data = {k: v for k, v in row.items() if k not in ("source_file",)}
     client_row = ClientRow(
         source_file=source_file,
@@ -280,7 +389,7 @@ async def update_client(client_id: int, row: Dict[str, Any]):
     if not c:
         session.close()
         raise HTTPException(status_code=404, detail="Client not found.")
-    
+
     current_data = json.loads(c.data) if c.data else {}
     for key, value in row.items():
         if key not in ("source_file", "id"):
@@ -319,87 +428,83 @@ async def reset_import():
 
 @app.post("/api/save-to-excel")
 async def save_to_excel():
-    """Write current database back to the stored Excel files, preserving original structure."""
+    """Write current database back to the stored Excel files, one sheet per dataset."""
     session = get_session()
-    all_rows = session.query(ClientRow).all()
+    all_rows = session.query(ClientRow).order_by(ClientRow.id).all()
+    metas = {m.source_file: json.loads(m.columns or "[]") for m in session.query(ImportMeta).all()}
     session.close()
 
     if not all_rows:
         raise HTTPException(status_code=400, detail="No data to save.")
 
-    # Group rows by source_file
-    by_file: Dict[str, List[ClientRow]] = {}
+    # Group rows by workbook, then by sheet
+    by_file: Dict[str, Dict[Optional[str], List[ClientRow]]] = {}
     for row in all_rows:
-        by_file.setdefault(row.source_file, []).append(row)
+        fname, _, sheet = (row.source_file or "").partition("::")
+        by_file.setdefault(fname, {}).setdefault(sheet or None, []).append(row)
 
     saved = []
-    for fname, rows in by_file.items():
+    failed = []
+    for fname, sheet_rows in by_file.items():
         fpath = os.path.join(UPLOAD_DIR, fname)
         if not os.path.exists(fpath):
             continue
 
         try:
-            # Read original Excel to preserve structure
-            df = pd.read_excel(fpath, engine="openpyxl")
-            columns = [str(c).strip() for c in df.columns]
+            # Legacy rows (imported before per-sheet storage) have no sheet name
+            if None in sheet_rows:
+                first_sheet = pd.ExcelFile(fpath).sheet_names[0]
+                sheet_rows[first_sheet] = sheet_rows.pop(None)
+                metas.setdefault(f"{fname}::{first_sheet}", metas.get(fname, []))
 
-            # Build new data for this file
-            # Separate imported rows (row_index >= 0) from manual rows (row_index = -1)
-            imported_rows = [r for r in rows if r.row_index is not None and r.row_index >= 0]
-            manual_rows = [r for r in rows if r.row_index is None or r.row_index < 0]
-
-            # Sort imported rows by original index
-            imported_rows.sort(key=lambda r: r.row_index)
-
-            # Create DataFrame preserving original columns
-            data_dict: Dict[str, List[Any]] = {col: [] for col in columns}
-
-            # Rebuild imported rows in original order
-            for orig_row in imported_rows:
-                row_data = json.loads(orig_row.data) if orig_row.data else {}
-                for col in columns:
-                    val = row_data.get(col, "")
-                    data_dict[col].append(val)
-
-            # Append manual rows
-            for mrow in manual_rows:
-                row_data = json.loads(mrow.data) if mrow.data else {}
-                for col in columns:
-                    val = row_data.get(col, "")
-                    data_dict[col].append(val)
-
-            new_df = pd.DataFrame(data_dict)
-            new_df.to_excel(fpath, index=False, engine="openpyxl")
+            with pd.ExcelWriter(fpath, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+                for sheet, rows in sheet_rows.items():
+                    df = rows_to_df(rows, metas.get(f"{fname}::{sheet}", []))
+                    df.to_excel(writer, sheet_name=sheet, index=False)
             saved.append(fname)
-        except Exception:
-            continue
+        except Exception as e:
+            failed.append(f"{fname} ({e})")
 
     if saved:
-        return {"message": f"Saved to {len(saved)} file(s): {', '.join(saved)}"}
+        message = f"Saved {len(saved)} file(s): {', '.join(saved)}"
     else:
-        return {"message": "No files saved. Make sure files are still in uploads."}
+        message = "No files saved. Make sure files are still in uploads."
+    if failed:
+        message += f" · Could not save: {'; '.join(failed)}"
+    return {"message": message}
 
 
 @app.get("/api/export")
 async def export_excel():
-    """Download current database as a fresh Excel file."""
+    """Download the whole database as one sheet per imported sheet."""
     session = get_session()
-    rows = session.query(ClientRow).all()
+    rows = session.query(ClientRow).order_by(ClientRow.id).all()
+    metas = {m.source_file: json.loads(m.columns or "[]") for m in session.query(ImportMeta).order_by(ImportMeta.id).all()}
     session.close()
 
     if not rows:
         raise HTTPException(status_code=400, detail="No data to export.")
 
-    # Get all unique columns across all rows
-    all_data = [json.loads(r.data) or {} for r in rows]
-    all_keys = sorted({k for d in all_data for k in d.keys()})
+    by_source: Dict[str, List[ClientRow]] = {}
+    for row in rows:
+        by_source.setdefault(row.source_file or "manual", []).append(row)
 
-    data = []
-    for r in rows:
-        row_data = json.loads(r.data) or {}
-        data.append({k: row_data.get(k, "") for k in all_keys})
+    # Keep workbook/sheet order, then append anything without metadata
+    order = [k for k in metas if k in by_source] + [k for k in by_source if k not in metas]
+    used_names, sheets = set(), []
+    for key in order:
+        fname, _, sheet = key.partition("::")
+        name = re.sub(r"[\[\]:*?/\\]", "", sheet or os.path.splitext(fname)[0])[:31] or "Data"
+        base, n = name, 1
+        while name.lower() in used_names:
+            n += 1
+            suffix = f" ({n})"
+            name = base[:31 - len(suffix)] + suffix
+        used_names.add(name.lower())
+        sheets.append((name, rows_to_df(by_source[key], metas.get(key, []))))
 
-    df = pd.DataFrame(data)
     export_path = DATA_DIR / "export.xlsx"
-    df.to_excel(export_path, index=False, engine="openpyxl")
+    with pd.ExcelWriter(export_path, engine="openpyxl") as writer:
+        for name, df in sheets:
+            df.to_excel(writer, sheet_name=name, index=False)
     return FileResponse(str(export_path), filename="es_network_export.xlsx")

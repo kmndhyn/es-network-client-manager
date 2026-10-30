@@ -371,6 +371,7 @@
   </header>
 
   <div class="card toolbar">
+    <select id="datasetSelect" aria-label="Sheet" hidden></select>
     <div class="search-wrap">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
         <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>
@@ -380,7 +381,7 @@
     <div class="toolbar-actions">
       <button onclick="openAddModal()">+ Add client</button>
       <button onclick="triggerImport()">Import</button>
-      <button class="ghost" id="copyBtn" onclick="copyEmails()" hidden>Copy emails</button>
+      <button class="ghost" id="copyBtn" onclick="copyEmails()" title="Copy valid emails from the rows currently shown (filters apply)" hidden>Copy emails</button>
       <span class="sep" aria-hidden="true"></span>
       <button class="ghost" onclick="openSaveModal()">Save to file</button>
       <button class="ghost" onclick="exportExcel()">Export</button>
@@ -423,7 +424,7 @@
 <div class="modal-overlay" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
   <div class="modal" style="max-width:520px">
     <h2 id="importTitle">Import Excel</h2>
-    <p class="hint">First sheet of each file. Re-importing the same filename replaces its rows.</p>
+    <p class="hint">Every sheet of each file is imported. Re-importing the same file replaces all of its sheets.</p>
     <div class="field wide">
       <label for="importFiles">Excel files (.xlsx / .xls)</label>
       <input type="file" id="importFiles" accept=".xlsx,.xls" multiple>
@@ -446,14 +447,14 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
         <span>
           <strong>Download a new sheet</strong>
-          <small>Writes a fresh .xlsx from the database. Never touches your imported files.</small>
+          <small>Writes a fresh .xlsx from the database, one tab per imported sheet. Never touches your imported files.</small>
         </span>
       </button>
       <button class="ghost save-option danger" id="overwriteBtn" onclick="overwriteFiles()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
         <span>
           <strong>Overwrite the imported file</strong>
-          <small id="saveTargets">Replaces the workbook in <code>uploads/</code> with the current rows.</small>
+          <small id="saveTargets">Rebuilds every imported sheet from the database. Formatting, formulas and title rows above the header are lost.</small>
         </span>
       </button>
     </div>
@@ -470,6 +471,8 @@ let currentRows = [];
 let rowsById = new Map();
 let editingId = null;
 let searchTimer = null;
+const ALL_SHEETS = '__all__';
+let currentSource = '';
 
 const EMAIL_COL = /^(e-?mail(\s*address)?|contact\s*e-?mail)$/i;
 const STATUS_COL = /(^|\s)(status|state|stage)$/i;
@@ -537,11 +540,39 @@ function cellHtml(col, value) {
 // ── Data loading ────────────────────────────────────────────
 
 async function loadColumns() {
-  const data = await api('/api/columns');
-  tableColumns = data.columns || [];
-  sourceFiles = data.sources || [];
+  // First load (or a sheet that vanished after re-import): show one sheet, not a merged union.
+  for (;;) {
+    const src = currentSource === ALL_SHEETS ? '' : currentSource;
+    const data = await api('/api/columns' + (src ? '?source_file=' + encodeURIComponent(src) : ''));
+    const sources = data.sources || [];
+    const next = !currentSource || (currentSource !== ALL_SHEETS && !sources.includes(currentSource))
+      ? (sources[0] || ALL_SHEETS)
+      : currentSource;
+    if (next === currentSource) {
+      tableColumns = data.columns || [];
+      sourceFiles = sources;
+      break;
+    }
+    currentSource = next;
+  }
+  renderDatasetSelect();
   buildTableHeader();
   await buildFilterBar();
+}
+
+function renderDatasetSelect() {
+  const sel = $('datasetSelect');
+  sel.hidden = sourceFiles.length === 0;
+  sel.innerHTML = `<option value="${ALL_SHEETS}">All sheets (combined view)</option>` +
+    sourceFiles.map(s => {
+      const [file, sheet] = s.split('::');
+      return `<option value="${esc(s)}">${esc(sheet ? `${file} › ${sheet}` : file)}</option>`;
+    }).join('');
+  sel.value = currentSource || ALL_SHEETS;
+}
+
+function sourceParam() {
+  return currentSource && currentSource !== ALL_SHEETS ? currentSource : '';
 }
 
 function buildTableHeader() {
@@ -557,7 +588,8 @@ async function buildFilterBar() {
   const bar = $('filterBar');
   let filterable = {};
   try {
-    filterable = (await api('/api/filters')).filterable || {};
+    const src = sourceParam();
+    filterable = (await api('/api/filters' + (src ? '?source_file=' + encodeURIComponent(src) : ''))).filterable || {};
   } catch (e) {
     console.error('Failed to load filters:', e);
   }
@@ -588,6 +620,8 @@ async function buildFilterBar() {
 
 async function loadClients() {
   const params = new URLSearchParams();
+  const src = sourceParam();
+  if (src) params.set('source_file', src);
   const search = $('filterSearch').value.trim();
   if (search) params.set('search', search);
   $('filterBar').querySelectorAll('select').forEach(sel => {
@@ -691,7 +725,7 @@ function editClient(id) {
   if (!row) return;
   editingId = id;
   $('modalTitle').textContent = 'Edit client';
-  $('modalHint').textContent = row.source_file ? `From ${row.source_file}` : '';
+  $('modalHint').textContent = row.source_file ? `From ${row.source_file.replace('::', ' › ')}` : '';
   buildModalFields(row.data || {});
   openModal('clientModal');
 }
@@ -726,6 +760,7 @@ function closeImportModal() { $('importModal').classList.remove('active'); }
 async function saveClient() {
   const body = {};
   $('modalFields').querySelectorAll('input').forEach(inp => { body[inp.dataset.col] = inp.value; });
+  if (!editingId) body.source_file = sourceParam() || sourceFiles[0] || '';
   try {
     if (editingId) {
       await api('/api/clients/' + editingId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -778,10 +813,11 @@ async function submitImport() {
 
 function openSaveModal() {
   const btn = $('overwriteBtn');
-  const hasSources = sourceFiles.length > 0;
+  const files = [...new Set(sourceFiles.map(s => s.split('::')[0]))];
+  const hasSources = files.length > 0;
   btn.disabled = !hasSources;
   $('saveTargets').textContent = hasSources
-    ? `Replaces ${sourceFiles.join(', ')} in uploads/ with the current rows.`
+    ? `Rebuilds ${files.join(', ')} in uploads/. Formatting, formulas and title rows above the header are lost.`
     : 'No imported files to overwrite — use the download option.';
   openModal('saveModal');
 }
@@ -811,8 +847,10 @@ async function resetImport() {
     await api('/api/import/reset', { method: 'POST' });
     tableColumns = [];
     sourceFiles = [];
+    currentSource = '';
     currentRows = [];
     rowsById = new Map();
+    renderDatasetSelect();
     buildTableHeader();
     await buildFilterBar();
     renderRows([]);
@@ -847,6 +885,16 @@ function applyTheme(dark) {
 $('filterSearch').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(loadClients, 250);
+});
+
+$('datasetSelect').addEventListener('change', async () => {
+  currentSource = $('datasetSelect').value;
+  try {
+    await loadColumns();
+    await loadClients();
+  } catch (e) {
+    $('statusMsg').textContent = 'Could not switch sheet: ' + e.message;
+  }
 });
 
 document.addEventListener('keydown', e => {
