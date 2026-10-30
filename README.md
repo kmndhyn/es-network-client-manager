@@ -53,7 +53,9 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
 
 - `main.py` — FastAPI backend
 - `database.py` — SQLite schema
+- `paths.py` — asset/data locations (source vs. frozen build)
 - `static/index.html` — Frontend
+- `launcher.py` — Server launcher (opens browser automatically)
 - `es_network.db` — Your local database (created on first import)
 - `uploads/` — Stored Excel files for import/save
 

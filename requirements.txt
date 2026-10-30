@@ -4,3 +4,5 @@ pandas==3.1.0
 openpyxl==3.1.5
 sqlalchemy==2.0.55
 python-multipart==0.0.20
+pywebview==6.2.1
+pyinstaller==6.22.3

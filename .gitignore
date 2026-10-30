@@ -21,3 +21,9 @@ desktop.ini
 
 # ── Runtime ──────────────────────────────────────────────────────
 server.log
+startup-error.log
+.webview/
+
+# ── Build output ─────────────────────────────────────────────────
+build/
+dist/
