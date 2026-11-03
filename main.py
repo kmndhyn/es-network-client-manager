@@ -31,7 +31,7 @@ NULLISH = {
     "", "nan", "none", "null", "nil", "n/a", "na", "-", "--", "---",
     "unknown", "unnamed", "undefined", "missing", "#n/a", "#na", "#null",
     "#ref!", "#value!", "#div/0!", "#name?", "no data", "not available",
-    "—", "–", "•", "·",
+    "—", "–", "•", "·", "★unknown", "─", "なし", "★ unknown", "★",
 }
 
 
@@ -60,7 +60,7 @@ def unique_columns(raw_columns) -> List[str]:
     """Every column survives: blanks get a name, repeats get a suffix."""
     names, used = [], set()
     for i, c in enumerate(raw_columns, start=1):
-        name = str(c).strip()
+        name = re.sub(r"\s+", " ", str(c).strip())
         if not name or name.lower().startswith("unnamed:"):
             name = f"Column {i}"
         candidate, n = name, 1
@@ -97,21 +97,52 @@ def _looks_like_data(val) -> bool:
     return bool(re.fullmatch(r"[\d\s,./:+-]+", text)) and any(ch.isdigit() for ch in text)
 
 
-def _choose_header(df: pd.DataFrame, limit: int = 20) -> int:
+def _choose_header(df: pd.DataFrame, limit: int = 20, ws=None, width: Optional[int] = None) -> int:
     """Return the row index holding the real column names, or -1 when there is none.
 
     Scans the top of the sheet so a title/notes row above the table (the usual
     source of "Unnamed: 0") is skipped instead of becoming the header.
+    When `ws` (openpyxl worksheet) is provided, merged header cells are spread
+    across their span so a merged header row is not under-scored and skipped.
     """
-    best, best_score = -1, 0
+    if width is None:
+        width = df.shape[1]
+
+    merged_by_row = {}
+    if ws is not None:
+        for rng in ws.merged_cells.ranges:
+            for r in range(rng.min_row, rng.max_row + 1):
+                merged_by_row.setdefault(r, []).append(rng)
+
+    def effective_raw(i):
+        excel_row = i + 1
+        anchors = {}
+        if ws is not None:
+            for rng in merged_by_row.get(excel_row, []):
+                anchor = _clean_value(ws.cell(row=rng.min_row, column=rng.min_col).value)
+                if anchor != "":
+                    for col in range(rng.min_col, rng.max_col + 1):
+                        anchors[col] = anchor
+        out = []
+        for j in range(width):
+            if j + 1 in anchors:
+                out.append(anchors[j + 1])
+            else:
+                out.append(df.iloc[i, j] if j < df.shape[1] else None)
+        return out
+
+    best, best_key = -1, (0, 0)
     for i in range(min(limit, len(df))):
-        values = [v for v in df.iloc[i] if not _is_blank(v)]
-        if len(values) < 2 or any(_looks_like_data(v) for v in values):
+        values = effective_raw(i)
+        nonblank = [v for v in values if not _is_blank(v)]
+        raw_nonblank = [v for v in (list(df.iloc[i])[:width] if i < len(df) else []) if not _is_blank(v)]
+        if len(nonblank) < 2 or any(_looks_like_data(v) for v in nonblank):
             continue
-        if i + 1 < len(df) and all(_is_blank(v) for v in df.iloc[i + 1]):
+        if i + 1 < len(df) and all(_is_blank(v) for v in effective_raw(i + 1)):
             continue
-        if len(values) > best_score:
-            best, best_score = i, len(values)
+        key = (len(nonblank), len(raw_nonblank))
+        if key > best_key:
+            best, best_key = i, key
     return best
 
 
@@ -149,9 +180,11 @@ def import_excel_book(filepath: str) -> List[Dict[str, Any]]:
         width = df.shape[1]
         if width == 0:
             continue  # genuinely empty sheet
+        if width < 2:
+            continue  # not a tabular sheet (single column / note)
 
-        header_pos = _choose_header(df)
         ws = wb[sheet_name] if wb is not None else None
+        header_pos = _choose_header(df, ws=ws, width=width)
         if header_pos >= 0:
             columns = _header_names(df, header_pos, ws, width)
             body = df.iloc[header_pos + 1:]
@@ -160,6 +193,31 @@ def import_excel_book(filepath: str) -> List[Dict[str, Any]]:
             body = df
 
         body = body.dropna(how="all")  # blank spacer rows carry no data
+
+        # Drop placeholder columns (Column N / Unnamed) that carry no data at all,
+        # so empty spacer columns don't show up as "Column 1" in the UI.
+        # shortcut: only drops when entirely blank; placeholder columns with data
+        # survive (rename in Excel to clean them up).
+        if len(columns) == width and len(body) > 0:
+            all_blank = [True] * width
+            for values in body.itertuples(index=False, name=None):
+                for j in range(width):
+                    if j < len(values) and not _is_blank(values[j]):
+                        all_blank[j] = False
+            keep = []
+            for j in range(width):
+                hdr = str(columns[j]).strip()
+                # Only auto-generated placeholders ("Column N" with a space) that
+                # are entirely blank are dropped; ones with data survive so no
+                # data is silently lost (mapped/renamed later).
+                if re.fullmatch(r"Column\s+\d+", hdr) and all_blank[j]:
+                    continue
+                keep.append(j)
+            if keep and len(keep) < width:
+                columns = [columns[j] for j in keep]
+                body = body.iloc[:, keep]
+                width = len(keep)
+
         rows = [
             {
                 "row_index": int(idx),
@@ -167,6 +225,8 @@ def import_excel_book(filepath: str) -> List[Dict[str, Any]]:
             }
             for idx, values in zip(body.index, body.itertuples(index=False, name=None))
         ]
+        if not rows:
+            continue  # no data rows
         sheets.append({
             "sheet": str(sheet_name),
             "columns": columns,

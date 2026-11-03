@@ -240,11 +240,13 @@
     padding: 11px 14px;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
+    min-width: 90px;
   }
   tbody td {
     padding: 11px 14px;
     border-bottom: 1px solid var(--border);
-    max-width: 260px;
+    max-width: 320px;
+    min-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -427,7 +429,7 @@
     <p class="hint">Every sheet of each file is imported. Re-importing the same file replaces all of its sheets.</p>
     <div class="field wide">
       <label for="importFiles">Excel files (.xlsx / .xls)</label>
-      <input type="file" id="importFiles" accept=".xlsx,.xls" multiple>
+      <input type="file" id="importFiles" accept=".xlsx,.xls,.xlsm" multiple>
     </div>
     <div id="importStatus" class="status-line"></div>
     <div class="modal-actions">
@@ -897,8 +899,19 @@ $('datasetSelect').addEventListener('change', async () => {
   }
 });
 
+function closeTextModal() { $('textModal').classList.remove('active'); }
+
+// Click a truncated cell to view its full value.
+document.addEventListener('click', (e) => {
+  const td = e.target.closest('tbody td');
+  if (!td || td.classList.contains('actions')) return;
+  const full = td.getAttribute('title');
+  if (!full || full === '—') return;
+  $('textModalBody').textContent = full;
+  $('textModal').classList.add('active');
+});
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); closeImportModal(); closeSaveModal(); }
+  if (e.key === 'Escape') { closeModal(); closeImportModal(); closeSaveModal(); closeTextModal(); }
   if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
     e.preventDefault();
     $('filterSearch').focus();
@@ -918,5 +931,12 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   await loadClients();
 })();
 </script>
+  <div class="modal-overlay" id="textModal" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:600px">
+      <h2>Cell value</h2>
+      <p id="textModalBody" style="white-space:pre-wrap;word-break:break-word;margin:12px 0 0"></p>
+      <div class="modal-actions"><button class="ghost" onclick="closeTextModal()">Close</button></div>
+    </div>
+  </div>
 </body>
 </html>
