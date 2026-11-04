@@ -207,6 +207,50 @@
     max-width: 220px;
     cursor: pointer;
   }
+  .dept-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .dept-filters .dept-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--muted);
+    margin-right: 2px;
+  }
+  .dept-filters .dept-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 6px;
+  }
+  .dept-filters label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12.5px;
+    color: var(--text);
+    cursor: pointer;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+    user-select: none;
+  }
+  .dept-filters label:has(input:checked) {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .dept-filters input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+  }
   select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
   .status-line {
@@ -390,6 +434,7 @@
       <button class="ghost danger" onclick="resetImport()">Reset</button>
     </div>
     <div class="filter-bar" id="filterBar" hidden></div>
+    <div class="dept-filters" id="deptFilters" hidden></div>
     <div class="status-line">
       <span class="count" id="countLabel">Loading…</span>
       <span class="msg" id="statusMsg"></span>
@@ -588,19 +633,24 @@ function buildTableHeader() {
 
 async function buildFilterBar() {
   const bar = $('filterBar');
+  const dept = $('deptFilters');
   let filterable = {};
+  let presence = {};
   try {
     const src = sourceParam();
-    filterable = (await api('/api/filters' + (src ? '?source_file=' + encodeURIComponent(src) : ''))).filterable || {};
+    const data = await api('/api/filters' + (src ? '?source_file=' + encodeURIComponent(src) : ''));
+    filterable = data.filterable || {};
+    presence = data.presence_filters || {};
   } catch (e) {
     console.error('Failed to load filters:', e);
   }
-  const entries = Object.entries(filterable);
   bar.innerHTML = '';
-  bar.hidden = !entries.length;
-  if (!entries.length) return;
+  bar.hidden = !Object.keys(filterable).length;
+  if (!Object.keys(filterable).length && !Object.keys(presence).length) return;
 
-  entries.forEach(([col, values]) => {
+  // Standard dropdown filters
+  const filterEntries = Object.entries(filterable);
+  filterEntries.forEach(([col, values]) => {
     const sel = document.createElement('select');
     sel.dataset.col = col;
     sel.setAttribute('aria-label', `Filter by ${col}`);
@@ -610,11 +660,46 @@ async function buildFilterBar() {
     bar.appendChild(sel);
   });
 
+  // Department presence checkboxes (HR / Payroll, Legal, Accounting, etc.)
+  const deptEntries = Object.entries(presence);
+  if (deptEntries.length) {
+    dept.hidden = false;
+    const lblHas = document.createElement('span');
+    lblHas.className = 'dept-label';
+    lblHas.textContent = 'Has contact:';
+    dept.appendChild(lblHas);
+    deptEntries.forEach(([col, count]) => {
+      const id = 'dept_' + col.replace(/[^a-z0-9]+/gi, '_');
+      const label = document.createElement('label');
+      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" data-mode="include" value="1"> ${esc(col)} (${count})`;
+      label.querySelector('input').onchange = () => loadClients();
+      dept.appendChild(label);
+    });
+    const sep = document.createElement('span');
+    sep.className = 'dept-separator';
+    sep.setAttribute('aria-hidden', 'true');
+    dept.appendChild(sep);
+    const lblMiss = document.createElement('span');
+    lblMiss.className = 'dept-label';
+    lblMiss.textContent = 'Missing contact:';
+    dept.appendChild(lblMiss);
+    deptEntries.forEach(([col, count]) => {
+      const id = 'nodept_' + col.replace(/[^a-z0-9]+/gi, '_');
+      const label = document.createElement('label');
+      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" data-mode="exclude" value="1"> ${esc(col)}`;
+      label.querySelector('input').onchange = () => loadClients();
+      dept.appendChild(label);
+    });
+  } else {
+    dept.hidden = true;
+  }
+
   const clear = document.createElement('button');
   clear.className = 'ghost small';
   clear.textContent = 'Clear filters';
   clear.onclick = () => {
     bar.querySelectorAll('select').forEach(s => { s.value = ''; });
+    dept.querySelectorAll('input').forEach(c => { c.checked = false; });
     loadClients();
   };
   bar.appendChild(clear);
@@ -628,6 +713,10 @@ async function loadClients() {
   if (search) params.set('search', search);
   $('filterBar').querySelectorAll('select').forEach(sel => {
     if (sel.value) params.set(sel.dataset.col, sel.value);
+  });
+  $('deptFilters').querySelectorAll('input:checked').forEach(cb => {
+    const prefix = cb.dataset.mode === 'exclude' ? 'nodept_' : 'dept_';
+    params.set(prefix + cb.dataset.dept, '1');
   });
 
   try {

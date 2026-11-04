@@ -34,6 +34,29 @@ NULLISH = {
     "—", "–", "•", "·", "★unknown", "─", "なし", "★ unknown", "★",
 }
 
+_DEPT_KEYWORDS = re.compile(r'(?i)\b(hr|payroll|legal|acctng|accounting|visa|liaison)\b')
+_DEPT_LABELS = {
+    'hr': 'HR / Payroll', 'payroll': 'Payroll', 'legal': 'Legal',
+    'acctng': 'Accounting', 'accounting': 'Accounting', 'visa': 'Visa', 'liaison': 'Liaison',
+}
+
+def _dept_label(key: str) -> str:
+    key_l = str(key).lower()
+    for kw, label in _DEPT_LABELS.items():
+        if kw in key_l:
+            return label
+    return str(key)
+
+def _is_dept_col(key: str, all_data: List[Dict[str, Any]]) -> bool:
+    if NUMBERED_COLUMN.match(str(key)):
+        return False
+    if not _DEPT_KEYWORDS.search(str(key)):
+        return False
+    nonempty = [str(d.get(key, "")).strip() for d in all_data if str(d.get(key, "")).strip()]
+    if len(nonempty) < 5:
+        return False
+    return True
+
 
 def _clean_value(val):
     """Normalize pandas/numpy values and common null-placeholder strings to empty string."""
@@ -253,12 +276,29 @@ def filterable_columns(all_data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
     for key in sorted({k for d in all_data for k in d}):
         if NUMBERED_COLUMN.match(str(key)):
             continue
+        if _is_dept_col(key, all_data):
+            continue  # rendered as presence checkboxes instead
         values = {str(d.get(key, "")).strip() for d in all_data}
         values.discard("")
         filled = sum(1 for d in all_data if str(d.get(key, "")).strip())
         if 2 <= len(values) <= FILTER_LIMIT and filled * 2 >= total:
             filterable[key] = sorted(values)
     return filterable
+
+
+def presence_columns(all_data: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Department/contact presence columns: empty = no contact, any value = has contact."""
+    result = {}
+    total = len(all_data)
+    if not total:
+        return result
+    for key in sorted({k for d in all_data for k in d}):
+        if not _is_dept_col(key, all_data):
+            continue
+        nonempty = sum(1 for d in all_data if str(d.get(key, "")).strip())
+        if nonempty:
+            result[key] = nonempty
+    return result
 
 
 def rows_to_df(rows: List[ClientRow], columns: List[str]) -> pd.DataFrame:
@@ -366,16 +406,28 @@ async def list_clients(
 
     # Every other query param is a column filter from the UI's filter bar.
     filters = {k: v for k, v in request.query_params.items() if k not in ("search", "source_file")}
+    # Presence filters: dept_<col_key>=1 means the column must be non-empty.
+    dept_required = {k.replace("dept_", "", 1): v for k, v in filters.items() if k.startswith("dept_") and v == "1"}
+    # Exclusion filters: nodept_<col_key>=1 means the column must be empty.
+    dept_excluded = {k.replace("nodept_", "", 1): v for k, v in filters.items() if k.startswith("nodept_") and v == "1"}
+    # Remove dept params from column filters so they don't double-match.
+    for k in list(dept_required.keys()):
+        filters.pop("dept_" + k, None)
+    for k in list(dept_excluded.keys()):
+        filters.pop("nodept_" + k, None)
 
     results = []
     for row in rows:
         item = row_to_dict(row)
         if search:
-            # Search across all data values
             haystack = " ".join(str(v) for v in item["data"].values()).lower()
             if search.lower() not in haystack:
                 continue
         if any(str(item["data"].get(k, "")) != v for k, v in filters.items()):
+            continue
+        if dept_required and not all(str(item["data"].get(k, "")).strip() for k in dept_required):
+            continue
+        if dept_excluded and any(str(item["data"].get(k, "")).strip() for k in dept_excluded):
             continue
         results.append(item)
 
@@ -411,14 +463,17 @@ async def get_columns(source_file: Optional[str] = Query(None)):
 
 @app.get("/api/filters")
 async def get_filters(source_file: Optional[str] = Query(None)):
-    """Return the columns worth showing as filter dropdowns."""
+    """Return the columns worth showing as filter dropdowns, plus department presence checkboxes."""
     session = get_session()
     q = session.query(ClientRow)
     if source_file:
         q = q.filter(ClientRow.source_file == source_file)
     all_data = [json.loads(r.data) or {} for r in q.all()]
     session.close()
-    return {"filterable": filterable_columns(all_data)}
+    return {
+        "filterable": filterable_columns(all_data),
+        "presence_filters": presence_columns(all_data),
+    }
 
 
 @app.post("/api/clients")
