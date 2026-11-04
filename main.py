@@ -408,13 +408,9 @@ async def list_clients(
     filters = {k: v for k, v in request.query_params.items() if k not in ("search", "source_file")}
     # Presence filters: dept_<col_key>=1 means the column must be non-empty.
     dept_required = {k.replace("dept_", "", 1): v for k, v in filters.items() if k.startswith("dept_") and v == "1"}
-    # Exclusion filters: nodept_<col_key>=1 means the column must be empty.
-    dept_excluded = {k.replace("nodept_", "", 1): v for k, v in filters.items() if k.startswith("nodept_") and v == "1"}
     # Remove dept params from column filters so they don't double-match.
     for k in list(dept_required.keys()):
         filters.pop("dept_" + k, None)
-    for k in list(dept_excluded.keys()):
-        filters.pop("nodept_" + k, None)
 
     results = []
     for row in rows:
@@ -426,8 +422,6 @@ async def list_clients(
         if any(str(item["data"].get(k, "")) != v for k, v in filters.items()):
             continue
         if dept_required and not all(str(item["data"].get(k, "")).strip() for k in dept_required):
-            continue
-        if dept_excluded and any(str(item["data"].get(k, "")).strip() for k in dept_excluded):
             continue
         results.append(item)
 

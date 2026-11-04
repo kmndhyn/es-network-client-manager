@@ -222,12 +222,6 @@
     color: var(--muted);
     margin-right: 2px;
   }
-  .dept-filters .dept-separator {
-    width: 1px;
-    height: 18px;
-    background: var(--border);
-    margin: 0 6px;
-  }
   .dept-filters label {
     display: inline-flex;
     align-items: center;
@@ -664,29 +658,14 @@ async function buildFilterBar() {
   const deptEntries = Object.entries(presence);
   if (deptEntries.length) {
     dept.hidden = false;
-    const lblHas = document.createElement('span');
-    lblHas.className = 'dept-label';
-    lblHas.textContent = 'Has contact:';
-    dept.appendChild(lblHas);
+    const lbl = document.createElement('span');
+    lbl.className = 'dept-label';
+    lbl.textContent = 'Has contact:';
+    dept.appendChild(lbl);
     deptEntries.forEach(([col, count]) => {
       const id = 'dept_' + col.replace(/[^a-z0-9]+/gi, '_');
       const label = document.createElement('label');
-      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" data-mode="include" value="1"> ${esc(col)} (${count})`;
-      label.querySelector('input').onchange = () => loadClients();
-      dept.appendChild(label);
-    });
-    const sep = document.createElement('span');
-    sep.className = 'dept-separator';
-    sep.setAttribute('aria-hidden', 'true');
-    dept.appendChild(sep);
-    const lblMiss = document.createElement('span');
-    lblMiss.className = 'dept-label';
-    lblMiss.textContent = 'Missing contact:';
-    dept.appendChild(lblMiss);
-    deptEntries.forEach(([col, count]) => {
-      const id = 'nodept_' + col.replace(/[^a-z0-9]+/gi, '_');
-      const label = document.createElement('label');
-      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" data-mode="exclude" value="1"> ${esc(col)}`;
+      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" value="1"> ${esc(col)} (${count})`;
       label.querySelector('input').onchange = () => loadClients();
       dept.appendChild(label);
     });
@@ -715,8 +694,7 @@ async function loadClients() {
     if (sel.value) params.set(sel.dataset.col, sel.value);
   });
   $('deptFilters').querySelectorAll('input:checked').forEach(cb => {
-    const prefix = cb.dataset.mode === 'exclude' ? 'nodept_' : 'dept_';
-    params.set(prefix + cb.dataset.dept, '1');
+    params.set('dept_' + cb.dataset.dept, '1');
   });
 
   try {
