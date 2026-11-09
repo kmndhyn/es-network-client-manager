@@ -464,9 +464,13 @@ async def get_filters(source_file: Optional[str] = Query(None)):
         q = q.filter(ClientRow.source_file == source_file)
     all_data = [json.loads(r.data) or {} for r in q.all()]
     session.close()
+    presence = presence_columns(all_data)
     return {
         "filterable": filterable_columns(all_data),
-        "presence_filters": presence_columns(all_data),
+        "presence_filters": presence,
+        # Display labels use the actual department name (from _DEPT_LABELS),
+        # not the raw column header, which may be a person's name.
+        "presence_labels": {k: _dept_label(k) for k in presence},
     }
 
 

@@ -633,11 +633,13 @@ async function buildFilterBar() {
   const dept = $('deptFilters');
   let filterable = {};
   let presence = {};
+  let presenceLabels = {};
   try {
     const src = sourceParam();
     const data = await api('/api/filters' + (src ? '?source_file=' + encodeURIComponent(src) : ''));
     filterable = data.filterable || {};
     presence = data.presence_filters || {};
+    presenceLabels = data.presence_labels || {};
   } catch (e) {
     console.error('Failed to load filters:', e);
   }
@@ -668,7 +670,8 @@ async function buildFilterBar() {
     deptEntries.forEach(([col, count]) => {
       const id = 'dept_' + col.replace(/[^a-z0-9]+/gi, '_');
       const label = document.createElement('label');
-      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" value="1"> ${esc(col)} (${count})`;
+      const display = presenceLabels[col] || col;
+      label.innerHTML = `<input type="checkbox" id="${esc(id)}" data-dept="${esc(col)}" value="1"> ${esc(display)} (${count})`;
       label.querySelector('input').onchange = () => loadClients();
       dept.appendChild(label);
     });
