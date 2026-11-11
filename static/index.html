@@ -421,7 +421,7 @@
     <div class="toolbar-actions">
       <button onclick="openAddModal()">+ Add client</button>
       <button onclick="triggerImport()">Import</button>
-      <button class="ghost" id="copyBtn" onclick="copyEmails()" title="Copy valid emails from the rows currently shown that are on the mailing list (〇), filters apply" hidden>Copy emails</button>
+      <button class="ghost" id="copyBtn" onclick="copyEmails()" title="Copy valid emails from the rows currently shown that are ongoing and on the mailing list (〇), filters apply" hidden>Copy emails</button>
       <span class="sep" aria-hidden="true"></span>
       <button class="ghost" onclick="openSaveModal()">Save to file</button>
       <button class="ghost" onclick="exportExcel()">Export</button>
@@ -521,6 +521,18 @@ const DATE_COL = /(date|emailed|updated|created)/i;
 const MAILING_COL = /mailing|リストにある/i;
 // Circle (〇/○/◯) = on the mailing list; a line/dash or blank = not on it.
 const MAILING_ON = /[〇○◯⭕]/;
+// Status columns for the copy check: match anywhere in the header ("PROJ. STATUS",
+// "PROJECT STATUS", "PROJ.STATUS", ...), and prefer the project status one.
+const STATUS_ANY = /\b(status|state|stage)\b/i;
+const PROJECT_COL = /proj|project/i;
+// Only copy clients that are still ongoing/active; blank and inactive statuses are skipped.
+const STATUS_ON = /(?:^|[^a-z])(ongoing|active|new input)(?:[^a-z]|$)|^●?o$/i;
+const STATUS_OFF = /(inactive|unsub|disabled|blocked|bounce|invalid|expired|cancel|fail|closed|complete|done|terminat|lost|ended)/i;
+
+function isOngoingStatus(value) {
+  const s = String(value == null ? '' : value).trim();
+  return !!s && !STATUS_OFF.test(s) && STATUS_ON.test(s);
+}
 
 function $(id) { return document.getElementById(id); }
 
@@ -644,6 +656,7 @@ async function buildFilterBar() {
     console.error('Failed to load filters:', e);
   }
   bar.innerHTML = '';
+  dept.innerHTML = '';
   bar.hidden = !Object.keys(filterable).length;
   if (!Object.keys(filterable).length && !Object.keys(presence).length) return;
 
@@ -755,13 +768,19 @@ async function copyEmails() {
   const col = tableColumns.find(c => EMAIL_COL.test(c));
   if (!col) { setStatus('No email column in this data.'); return; }
   const mailingCol = tableColumns.find(c => MAILING_COL.test(c));
+  const statusCols = tableColumns.filter(c => STATUS_ANY.test(c));
+  const statusCol = statusCols.find(c => PROJECT_COL.test(c)) || statusCols[0];
+  if (!statusCol) { setStatus('No status column in this data — cannot verify ongoing.'); return; }
+  if (!mailingCol) { setStatus('No mailing list column in this data — cannot verify the circle.'); return; }
 
   const seen = new Set();
   const emails = [];
   let skipped = 0;
   let offList = 0;
+  let notOngoing = 0;
   currentRows.forEach(r => {
     const data = r.data || {};
+    if (statusCol && !isOngoingStatus(data[statusCol])) { notOngoing++; return; }
     if (mailingCol && !MAILING_ON.test(String(data[mailingCol] ?? '').trim())) { offList++; return; }
     const v = String(data[col] ?? '').trim();
     if (!isRealEmail(v)) { skipped++; return; }
@@ -772,7 +791,9 @@ async function copyEmails() {
   });
 
   if (!emails.length) {
-    setStatus(mailingCol && offList ? 'No valid emails on the mailing list in this view.' : 'No valid email addresses in this view.');
+    setStatus(statusCol && notOngoing ? 'No ongoing clients with valid emails in this view.'
+      : mailingCol && offList ? 'No valid emails on the mailing list in this view.'
+      : 'No valid email addresses in this view.');
     return;
   }
 
@@ -790,6 +811,7 @@ async function copyEmails() {
     ta.remove();
   }
   setStatus(`Copied ${emails.length} email${emails.length === 1 ? '' : 's'}` +
+    (notOngoing ? ` · ${notOngoing} not ongoing` : '') +
     (offList ? ` · ${offList} not on mailing list` : '') + (skipped ? ` · ${skipped} skipped` : ''));
 }
 

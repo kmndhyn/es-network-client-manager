@@ -40,11 +40,13 @@ Then open `https://<machine>.<tailnet>.ts.net/` from any signed-in device.
    header row is found automatically (title rows above it are skipped), and re-importing the
    same filename replaces all of that file's sheets.
 2. **Filter** — dropdowns are built from columns with 2–15 repeated values that are mostly
-   filled; numbered or blank columns are skipped. The search box matches every field.
-   Press `/` to jump to search.
+   filled; status columns always show, even when sparse. Numbered or blank columns are
+   skipped. Department contact columns appear as "Has contact" checkboxes, rebuilt for each
+   sheet. The search box matches every field. Press `/` to jump to search.
 3. **Add/Edit/Delete** — "Add client", or the pencil/trash icons on a row.
-4. **Copy emails** — copies valid addresses from the rows currently shown, one per line,
-   deduplicated. Placeholders like `UNKNOWN` are skipped.
+4. **Copy emails** — copies valid addresses from the rows currently shown that are still
+   ongoing/active and marked on the mailing list (〇), one per line, deduplicated.
+   Placeholders like `UNKNOWN` are skipped.
 5. **Save to file** — asks which you want:
    - **Download a new sheet** — writes a fresh .xlsx from the database, one tab per imported
      sheet. Never touches your files.

@@ -264,6 +264,7 @@ def import_excel_book(filepath: str) -> List[Dict[str, Any]]:
 
 FILTER_LIMIT = 15
 NUMBERED_COLUMN = re.compile(r"^(unnamed:\s*\d+|column\s+\d+)$", re.I)
+STATUS_COLUMN = re.compile(r"(^|\s)(status|state|stage)$", re.I)
 
 
 def filterable_columns(all_data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
@@ -281,7 +282,11 @@ def filterable_columns(all_data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         values = {str(d.get(key, "")).strip() for d in all_data}
         values.discard("")
         filled = sum(1 for d in all_data if str(d.get(key, "")).strip())
-        if 2 <= len(values) <= FILTER_LIMIT and filled * 2 >= total:
+        # Status is the one filter people reach for even when many rows are blank,
+        # so keep it visible regardless of how full the column is (even if it only
+        # has one value: picking it is how you drop the blank rows).
+        is_status = bool(STATUS_COLUMN.search(str(key)))
+        if (1 if is_status else 2) <= len(values) <= FILTER_LIMIT and (is_status or filled * 2 >= total):
             filterable[key] = sorted(values)
     return filterable
 
@@ -328,7 +333,8 @@ def row_to_dict(row: ClientRow) -> Dict[str, Any]:
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    # The UI is one file that changes with each fix; never let a browser keep an old copy.
+    return FileResponse(str(STATIC_DIR / "index.html"), headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/import")

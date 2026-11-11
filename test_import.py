@@ -95,4 +95,9 @@ assert set(picked) == {"Status", "Owner"}, picked
 assert picked["Status"] == ["Active", "Inactive"]
 
 assert filterable_columns([]) == {}
+
+# A status column stays pickable even when only a few rows have a value,
+# because choosing its one value is how the blank rows get filtered out.
+sparse_status = [{"Status": "Ongoing" if i < 4 else ""} for i in range(20)]
+assert filterable_columns(sparse_status) == {"Status": ["Ongoing"]}
 print("ok: filter picker skips numbered, single-value, mostly-empty and high-cardinality columns")
